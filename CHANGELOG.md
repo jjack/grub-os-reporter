@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/jjack/grubstation/compare/v1.8.0...v1.8.1) (2026-05-22)
+
+
+### Bug Fixes
+
+* removing useless import from test ([bad4795](https://github.com/jjack/grubstation/commit/bad47950251206810db4068e978c546284ecba02))
+
 ## [1.8.0](https://github.com/jjack/grubstation/compare/v1.7.1...v1.8.0) (2026-05-21)
 
 
