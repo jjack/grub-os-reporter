@@ -3,7 +3,6 @@
 package daemon
 
 import (
-	"os"
 	"os/exec"
 	"reflect"
 	"testing"
@@ -21,7 +20,7 @@ func TestShutdownSystem_Success(t *testing.T) {
 		if !reflect.DeepEqual(arg, expectedArgs) {
 			t.Errorf("expected args %v, got %v", expectedArgs, arg)
 		}
-		
+
 		// Return a command that succeeds (like 'cmd /c exit 0')
 		return exec.Command("cmd", "/c", "exit 0")
 	}
