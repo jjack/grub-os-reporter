@@ -6,6 +6,8 @@ import (
 	"os/exec"
 )
 
+var execCommand = exec.Command
+
 func shutdownSystem() error {
-	return exec.Command("poweroff").Run()
+	return execCommand("poweroff").Run()
 }
