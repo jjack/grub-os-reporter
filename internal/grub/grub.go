@@ -10,6 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"text/template"
+
+	"github.com/jjack/grubstation/internal/assets"
 )
 
 var ErrConfigNotFound = errors.New("no grub config found in known locations")
@@ -28,6 +31,7 @@ type Grub struct {
 	HassGrubStationPath string
 	LookPath            func(file string) (string, error)
 	Command             func(ctx context.Context, name string, arg ...string) *exec.Cmd
+	GetTemplate         func(name string) (*template.Template, error)
 }
 
 func NewGrub() *Grub {
@@ -35,6 +39,7 @@ func NewGrub() *Grub {
 		HassGrubStationPath: "/etc/grub.d/99_grubstation",
 		LookPath:            exec.LookPath,
 		Command:             exec.CommandContext,
+		GetTemplate:         assets.GetTemplate,
 	}
 }
 

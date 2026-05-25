@@ -4,7 +4,6 @@ package servicemanager
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,15 +11,13 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/jjack/grubstation/internal/assets"
 	"github.com/jjack/grubstation/internal/config"
 )
 
 const systemdName = "systemd"
 
 var systemdDir = "/run/systemd/system"
-
-//go:embed templates/grubstation.service.tmpl
-var systemdTemplate string
 
 type Systemd struct {
 	ServicePath  string
@@ -29,6 +26,7 @@ type Systemd struct {
 	OsRemove     func(name string) error
 	OsGetuid     func() int
 	ExecCommand  func(ctx context.Context, name string, arg ...string) *exec.Cmd
+	GetTemplate  func(name string) (*template.Template, error)
 }
 
 func NewSystemd() Manager {
@@ -39,6 +37,7 @@ func NewSystemd() Manager {
 		OsRemove:     os.Remove,
 		OsGetuid:     os.Getuid,
 		ExecCommand:  exec.CommandContext,
+		GetTemplate:  assets.GetTemplate,
 	}
 }
 
@@ -106,7 +105,7 @@ func (s *Systemd) Preview(ctx context.Context, configPath string) (string, error
 		return "", fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	tmpl, err := template.New("systemd").Parse(systemdTemplate)
+	tmpl, err := s.GetTemplate("grubstation.service.tmpl")
 	if err != nil {
 		return "", fmt.Errorf("failed to parse systemd template: %w", err)
 	}

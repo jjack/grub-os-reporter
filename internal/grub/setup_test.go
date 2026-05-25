@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"text/template"
 )
 
 // fakeExecCommand wrappers route the exec call back to the test binary's TestHelperProcess
@@ -152,21 +153,21 @@ func TestGrub_Setup_Errors(t *testing.T) {
 
 func TestGrub_Setup_TemplateErrors(t *testing.T) {
 	ctx := context.Background()
-
-	originalTemplate := grubTemplate
-	defer func() { grubTemplate = originalTemplate }()
-	g := &Grub{}
+	g := NewGrub()
 
 	// 1. Template parse error
-	grubTemplate = "{{ unclosed"
+	g.GetTemplate = func(name string) (*template.Template, error) {
+		return nil, errors.New("failed to parse grub template")
+	}
 	err := g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if err == nil || !strings.Contains(err.Error(), "failed to parse grub template") {
 		t.Fatalf("expected template parse error, got %v", err)
 	}
 
 	// 2. Template execute error
-	// Accessing a nonexistent field on a string will cause template execution to fail
-	grubTemplate = "{{ .Host.NonExistentField }}"
+	g.GetTemplate = func(name string) (*template.Template, error) {
+		return template.New(name).Parse("{{ .Host.NonExistentField }}")
+	}
 	err = g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if err == nil || !strings.Contains(err.Error(), "failed to execute grub template") {
 		t.Fatalf("expected template execute error, got %v", err)
@@ -360,7 +361,7 @@ func TestGrub_CheckDrift(t *testing.T) {
 }
 
 func TestGrub_GenerateScript_Errors(t *testing.T) {
-	g := &Grub{}
+	g := NewGrub()
 
 	// Invalid URL
 	_, err := g.GenerateScript(SetupOptions{TargetURL: "://bad"})
@@ -369,9 +370,9 @@ func TestGrub_GenerateScript_Errors(t *testing.T) {
 	}
 
 	// Template error
-	originalTemplate := grubTemplate
-	defer func() { grubTemplate = originalTemplate }()
-	grubTemplate = "{{ invalid"
+	g.GetTemplate = func(name string) (*template.Template, error) {
+		return nil, errors.New("failed to parse grub template")
+	}
 	_, err = g.GenerateScript(SetupOptions{TargetURL: "http://hass.local"})
 	if err == nil || !strings.Contains(err.Error(), "failed to parse grub template") {
 		t.Fatalf("expected template parse error, got %v", err)

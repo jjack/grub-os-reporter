@@ -8,16 +8,12 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"text/template"
 )
 
 var (
 	ErrInvalidHAURL = errors.New("invalid home assistant url: scheme and host are required")
 	ErrNoGrubTool   = errors.New("neither update-grub nor grub2-mkconfig found in PATH")
 )
-
-//go:embed templates/99_grubstation.tmpl
-var grubTemplate string
 
 func generateWaitList(seconds int) string {
 	if seconds <= 0 {
@@ -82,7 +78,7 @@ func (g *Grub) GenerateScript(opts SetupOptions) (string, error) {
 		return "", ErrInvalidHAURL
 	}
 
-	tmpl, err := template.New("grub").Parse(grubTemplate)
+	tmpl, err := g.GetTemplate("99_grubstation.tmpl")
 	if err != nil {
 		return "", fmt.Errorf("failed to parse grub template: %w", err)
 	}
