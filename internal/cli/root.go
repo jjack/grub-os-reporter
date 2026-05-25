@@ -13,7 +13,6 @@ import (
 	"github.com/jjack/grubstation/internal/version"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 type CLI struct {
@@ -40,44 +39,43 @@ func (cd *CommandDeps) Manager(ctx context.Context) (servicemanager.Manager, err
 }
 
 func (cli *CLI) LoadConfig(cmd *cobra.Command, cfgFile string) (string, error) {
-	v := config.NewViper(cfgFile)
-	// Bind flags to viper keys
-	_ = v.BindPFlag("grub.config_path", cmd.Flags().Lookup(config.FlagGrubConfig))
-	_ = v.BindPFlag("host.mac", cmd.Flags().Lookup(config.FlagMac))
-	_ = v.BindPFlag("host.address", cmd.Flags().Lookup(config.FlagAddress))
-	_ = v.BindPFlag("wake_on_lan.address", cmd.Flags().Lookup(config.FlagWolBroadcastAddress))
-	_ = v.BindPFlag("wake_on_lan.port", cmd.Flags().Lookup(config.FlagWolBroadcastPort))
-	_ = v.BindPFlag("homeassistant.url", cmd.Flags().Lookup(config.FlagHassURL))
-	_ = v.BindPFlag("homeassistant.webhook_id", cmd.Flags().Lookup(config.FlagHassWebhook))
-	_ = v.BindPFlag("daemon.port", cmd.Flags().Lookup(config.FlagAgentPort))
-	_ = v.BindPFlag("daemon.api_key", cmd.Flags().Lookup(config.FlagDaemonKey))
-
-	if err := v.ReadInConfig(); err != nil {
-		if cfgFile != "" {
-			return "", fmt.Errorf("failed to read config file %s: %w", cfgFile, err)
-		}
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok && !os.IsNotExist(err) {
-			return "", fmt.Errorf("failed to read config file: %w", err)
-		}
-	}
-
-	cfg, err := config.Unmarshal(v)
-	if err != nil {
-		return "", err
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return "", err
-	}
-
-	cli.Config = cfg
-	resolved := v.ConfigFileUsed()
-	if resolved == "" {
-		resolved = cfgFile
-	}
+	resolved := cfgFile
 	if resolved == "" {
 		resolved = config.DefaultConfigPath()
 	}
+
+	cfg, err := config.LoadConfig(resolved)
+	if err != nil {
+		if cfgFile != "" || !os.IsNotExist(err) {
+			return "", fmt.Errorf("failed to read config file %s: %w", resolved, err)
+		}
+		cfg = &config.Config{}
+	}
+
+	// Manually apply flag overrides
+	if cmd.Flags().Changed(config.FlagGrubConfig) {
+		cfg.Grub.Path, _ = cmd.Flags().GetString(config.FlagGrubConfig)
+	}
+	if cmd.Flags().Changed(config.FlagMac) {
+		cfg.Host.MAC, _ = cmd.Flags().GetString(config.FlagMac)
+	}
+	if cmd.Flags().Changed(config.FlagAddress) {
+		cfg.Host.Address, _ = cmd.Flags().GetString(config.FlagAddress)
+	}
+	if cmd.Flags().Changed(config.FlagWolBroadcastAddress) {
+		cfg.WakeOnLan.Address, _ = cmd.Flags().GetString(config.FlagWolBroadcastAddress)
+	}
+	if cmd.Flags().Changed(config.FlagWolBroadcastPort) {
+		cfg.WakeOnLan.Port, _ = cmd.Flags().GetInt(config.FlagWolBroadcastPort)
+	}
+	if cmd.Flags().Changed(config.FlagAgentPort) {
+		cfg.Daemon.Port, _ = cmd.Flags().GetInt(config.FlagAgentPort)
+	}
+	if cmd.Flags().Changed(config.FlagDaemonKey) {
+		cfg.Daemon.APIKey, _ = cmd.Flags().GetString(config.FlagDaemonKey)
+	}
+
+	cli.Config = cfg
 	return resolved, nil
 }
 

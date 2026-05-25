@@ -26,14 +26,14 @@ type SystemState struct {
 }
 
 var (
-	RunGenerateSurvey func(context.Context, SystemState, bool, func(net.Interface) ([]string, map[string]string), func(string, *net.Interface) string, func(context.Context) ([]homeassistant.ServiceInstance, error)) (*config.Config, error) = generateConfigInteractive
+	RunGenerateSurvey func(context.Context, SystemState, bool, func(net.Interface) ([]string, map[string]string), func(string, *net.Interface) string, func(context.Context) ([]homeassistant.ServiceInstance, error)) (*config.Config, *config.State, error) = generateConfigInteractive
 
 	ErrAborted = errors.New("setup aborted")
 )
 
-func generateConfigInteractive(ctx context.Context, state SystemState, isDryRun bool, getIPInfo func(net.Interface) ([]string, map[string]string), getFQDN func(string, *net.Interface) string, discoverHA func(context.Context) ([]homeassistant.ServiceInstance, error)) (*config.Config, error) {
+func generateConfigInteractive(ctx context.Context, state SystemState, isDryRun bool, getIPInfo func(net.Interface) ([]string, map[string]string), getFQDN func(string, *net.Interface) string, discoverHA func(context.Context) ([]homeassistant.ServiceInstance, error)) (*config.Config, *config.State, error) {
 	if err := stepConfirmOverwrite(ctx, state.IsReinstall, isDryRun); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Start background tasks
@@ -43,53 +43,54 @@ func generateConfigInteractive(ctx context.Context, state SystemState, isDryRun 
 	// 1. Installation Mode
 	mode, err := stepSelectInstallationMode(ctx, state.GrubConfigPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	reportsBoot, runsDaemon := GetModeFlags(mode)
 
 	// 2. Network Interface
 	selectedIface, err := stepSelectNetworkInterface(ctx, state.Interfaces, getIPInfo)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// 3. Host Address
 	hostAddress, err := stepSelectHostAddress(ctx, state.Hostname, selectedIface, fqdnChan, getIPInfo, getFQDN)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// 4. Daemon Port
 	agentPort, err := stepSelectDaemonPort(ctx, state, runsDaemon)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// 5. WOL Address
 	wolBroadcastAddress, err := stepSelectWOLAddress(ctx, selectedIface, getIPInfo)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// 6. GRUB Wait Time
 	grubWaitTime, finalGrubConfigPath, err := stepSelectGRUBWaitTime(ctx, state.GrubConfigPath, reportsBoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// 7. Home Assistant URL
 	haURL, grubURL, err := stepSelectHomeAssistantURL(ctx, haChan)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// 8. HA Webhook ID
 	haWebhook, err := stepGetWebhookID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return AssembleConfig(hostAddress, selectedIface.HardwareAddr.String(), wolBroadcastAddress, haURL, haWebhook, agentPort, reportsBoot, grubWaitTime, finalGrubConfigPath, grubURL), nil
+	cfg, pairState := AssembleConfig(hostAddress, selectedIface.HardwareAddr.String(), wolBroadcastAddress, haURL, haWebhook, agentPort, reportsBoot, grubWaitTime, finalGrubConfigPath, grubURL)
+	return cfg, pairState, nil
 }
 
 func stepConfirmOverwrite(ctx context.Context, isReinstall, isDryRun bool) error {
@@ -414,30 +415,35 @@ func stepGetWebhookID(ctx context.Context) (string, error) {
 	return haWebhook, nil
 }
 
-// AssembleConfig is a pure function that populates the Config struct.
-func AssembleConfig(hostAddress, mac, wolAddress, haURL, haWebhook string, agentPort int, reportsBoot bool, grubWait int, grubPath, grubURL string) *config.Config {
-	return &config.Config{
+// AssembleConfig is a pure function that populates the Config and State structs.
+func AssembleConfig(hostAddress, mac, wolAddress, haURL, haWebhook string, agentPort int, reportsBoot bool, grubWait int, grubPath, grubURL string) (*config.Config, *config.State) {
+	cfg := &config.Config{
 		Host: config.HostConfig{
-			Address:    hostAddress,
-			MACAddress: mac,
+			Address: hostAddress,
+			MAC:     mac,
 		},
-		WakeOnLan: &config.WakeOnLanConfig{
+		WakeOnLan: config.WakeOnLanConfig{
 			Address: wolAddress,
-		},
-		HomeAssistant: config.HomeAssistantConfig{
-			URL:       haURL,
-			WebhookID: haWebhook,
 		},
 		Daemon: config.DaemonConfig{
 			Port:              agentPort,
 			ReportBootOptions: reportsBoot,
 		},
-		Grub: &config.GrubConfig{
-			WaitTimeSeconds: grubWait,
-			ConfigPath:      grubPath,
+		Grub: config.GrubConfig{
+			NetworkWaitTime: grubWait,
+			Path:            grubPath,
 			URL:             grubURL,
 		},
 	}
+
+	state := &config.State{
+		Paired:      haURL != "" && haWebhook != "",
+		HADaemonURL: haURL,
+		WebhookID:   haWebhook,
+		HAGrubURL:   grubURL,
+	}
+
+	return cfg, state
 }
 
 func PrintConfigSummary(cmd *cobra.Command, cfg *config.Config, cfgPath string) {

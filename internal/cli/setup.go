@@ -17,7 +17,6 @@ import (
 	"github.com/jjack/grubstation/internal/servicemanager"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/yarlson/tap"
 )
 
@@ -41,8 +40,25 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 				if err != nil {
 					return err
 				}
+
+				state, _ := config.LoadState(resolved)
+				if !state.Paired {
+					return fmt.Errorf("system is not paired. Run the full setup or pair via API first")
+				}
+
 				deps.Config = tempCLI.Config
 				deps.ConfigFile = resolved
+
+				log.Info().Msg("Applying GRUB configuration...")
+				if err := deps.Grub.Setup(cmd.Context(), grub.SetupOptions{
+					TargetMAC:       deps.Config.Host.MAC,
+					TargetURL:       state.HAGrubURL,
+					AuthToken:       state.WebhookID,
+					WaitTimeSeconds: deps.Config.Grub.NetworkWaitTime,
+				}); err != nil {
+					return err
+				}
+
 				return nil
 			}
 			return nil // Override root config loading for wizard
@@ -91,15 +107,11 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 			}
 
 			var currentPort int
-			if _, err := os.Stat(cfgPath); err == nil {
-				v := viper.New()
-				v.SetConfigFile(cfgPath)
-				if err := v.ReadInConfig(); err == nil {
-					currentPort = v.GetInt("daemon.port")
-				}
+			if existingCfg, err := config.LoadConfig(cfgPath); err == nil {
+				currentPort = existingCfg.Daemon.Port
 			}
 
-			cfg, err := doWizard(cmd.Context(), deps, cfgPath, currentPort, dryRun)
+			cfg, pairState, err := doWizard(cmd.Context(), deps, cfgPath, currentPort, dryRun)
 			if err != nil {
 				return err
 			}
@@ -108,10 +120,10 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 			}
 
 			if dryRun {
-				return doDryRun(cmd, deps, cfg, cfgPath, mgr)
+				return doDryRun(cmd, deps, cfg, pairState, cfgPath, mgr)
 			}
 
-			return doInstallation(cmd, deps, cfg, cfgPath)
+			return doInstallation(cmd, deps, cfg, pairState, cfgPath)
 		},
 	}
 
@@ -121,7 +133,7 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 	return cmd
 }
 
-func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPort int, dryRun bool) (*config.Config, error) {
+func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPort int, dryRun bool) (*config.Config, *config.State, error) {
 	// Clear the terminal screen before starting the interactive wizard
 	fmt.Print("\033[H\033[2J")
 	tap.Intro("GrubStation Setup")
@@ -144,19 +156,19 @@ func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPor
 		CurrentPort:    currentPort,
 	}
 
-	cfg, err := wizard.RunGenerateSurvey(ctx, state, dryRun, deps.Host.GetIPInfo, deps.Host.GetFQDN, deps.DiscoverHA)
+	cfg, pairState, err := wizard.RunGenerateSurvey(ctx, state, dryRun, deps.Host.GetIPInfo, deps.Host.GetFQDN, deps.DiscoverHA)
 	if err != nil {
 		if errors.Is(err, wizard.ErrAborted) {
 			tap.Message("Setup aborted.")
 			tap.Outro("Goodbye!")
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	return cfg, nil
+	return cfg, pairState, nil
 }
 
-func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath string, mgr servicemanager.Manager) error {
+func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, pairState *config.State, cfgPath string, mgr servicemanager.Manager) error {
 	wizard.PrintConfigSummary(cmd, cfg, cfgPath)
 
 	if svcPreview, err := mgr.Preview(cmd.Context(), cfgPath); err == nil {
@@ -167,17 +179,19 @@ func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath
 
 	if cfg.Daemon.ReportBootOptions {
 		waitTime := config.DefaultGrubWaitSeconds
-		targetURL := cfg.HomeAssistant.URL
-		if cfg.Grub != nil {
-			waitTime = cfg.Grub.WaitTimeSeconds
-			if cfg.Grub.URL != "" {
-				targetURL = cfg.Grub.URL
-			}
+		if cfg.Grub.NetworkWaitTime != 0 {
+			waitTime = cfg.Grub.NetworkWaitTime
 		}
+
+		targetURL := pairState.HAGrubURL
+		if cfg.Grub.URL != "" {
+			targetURL = cfg.Grub.URL
+		}
+
 		grubPreview, err := deps.Grub.GenerateScript(grub.SetupOptions{
-			TargetMAC:       cfg.Host.MACAddress,
+			TargetMAC:       cfg.Host.MAC,
 			TargetURL:       targetURL,
-			AuthToken:       cfg.HomeAssistant.WebhookID,
+			AuthToken:       pairState.WebhookID,
 			WaitTimeSeconds: waitTime,
 		})
 		if err == nil {
@@ -192,12 +206,15 @@ func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath
 	return nil
 }
 
-func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath string) error {
+func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, pairState *config.State, cfgPath string) error {
 	if err := osMkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
 	if err := config.Save(cfg, cfgPath); err != nil {
+		return err
+	}
+	if err := pairState.Save(cfgPath); err != nil {
 		return err
 	}
 
@@ -209,6 +226,7 @@ func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, c
 
 	// We update the deps config with our freshly generated config so the installer can use it
 	*deps.Config = *cfg
+	deps.ConfigFile = cfgPath
 
 	if err := performInstall(cmd, deps, cfgPath, ""); err != nil {
 		if err == ErrElevated {
@@ -239,18 +257,21 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 
 	if deps.Config.Daemon.ReportBootOptions {
 		waitTime := config.DefaultGrubWaitSeconds
-		targetURL := deps.Config.HomeAssistant.URL
-		if deps.Config.Grub != nil {
-			waitTime = deps.Config.Grub.WaitTimeSeconds
-			if deps.Config.Grub.URL != "" {
-				targetURL = deps.Config.Grub.URL
-			}
+		if deps.Config.Grub.NetworkWaitTime != 0 {
+			waitTime = deps.Config.Grub.NetworkWaitTime
+		}
+
+		// Load state for GRUB setup details
+		state, _ := config.LoadState(cfgFile)
+		targetURL := state.HAGrubURL
+		if deps.Config.Grub.URL != "" {
+			targetURL = deps.Config.Grub.URL
 		}
 
 		opts := grub.SetupOptions{
-			TargetMAC:       deps.Config.Host.MACAddress,
+			TargetMAC:       deps.Config.Host.MAC,
 			TargetURL:       targetURL,
-			AuthToken:       deps.Config.HomeAssistant.WebhookID,
+			AuthToken:       state.WebhookID,
 			WaitTimeSeconds: waitTime,
 		}
 
@@ -263,12 +284,12 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 			return fmt.Errorf("failed to install grub: %w", err)
 		}
 
-		if deps.Config.HomeAssistant.URL != "" && deps.Config.HomeAssistant.WebhookID != "" {
+		if state.HADaemonURL != "" && state.WebhookID != "" {
 			tap.Message("Pushing initial boot options to Home Assistant...")
-			haClient := homeassistant.NewClient(deps.Config.HomeAssistant.URL, deps.Config.HomeAssistant.WebhookID, nil)
+			haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 
 			if token != "" {
-				if err := haClient.RegisterAgent(cmd.Context(), deps.Config.Host.MACAddress, deps.Config.Host.Address, token, deps.Config.Daemon.Port); err != nil {
+				if err := haClient.RegisterAgent(cmd.Context(), deps.Config.Host.MAC, deps.Config.Host.Address, token, deps.Config.Daemon.Port); err != nil {
 					return err
 				}
 			}
@@ -278,14 +299,7 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 				return err
 			}
 
-			var wolAddr string
-			var wolPort int
-			if deps.Config.WakeOnLan != nil {
-				wolAddr = deps.Config.WakeOnLan.Address
-				wolPort = deps.Config.WakeOnLan.Port
-			}
-
-			if err := haClient.UpdateBootOptions(cmd.Context(), deps.Config.Host.MACAddress, deps.Config.Host.Address, options, wolAddr, wolPort); err != nil {
+			if err := haClient.UpdateBootOptions(cmd.Context(), deps.Config.Host.MAC, deps.Config.Host.Address, options, deps.Config.WakeOnLan.Address, deps.Config.WakeOnLan.Port); err != nil {
 				return err
 			}
 			tap.Message("Successfully pushed initial state to Home Assistant.")

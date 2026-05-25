@@ -5,6 +5,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/jjack/grubstation/internal/config"
 	"github.com/jjack/grubstation/internal/daemon"
 	"github.com/jjack/grubstation/internal/homeassistant"
 	"github.com/rs/zerolog/log"
@@ -23,7 +24,9 @@ func NewBootPushCmd(deps *CommandDeps) *cobra.Command {
 				log.Debug().Err(err).Msg("Could not push via daemon socket, falling back to direct push")
 			}
 
-			if deps.Config.HomeAssistant.URL == "" || deps.Config.HomeAssistant.WebhookID == "" {
+			// Load state for HA credentials
+			state, _ := config.LoadState(deps.ConfigFile)
+			if state.HADaemonURL == "" || state.WebhookID == "" {
 				return fmt.Errorf("homeassistant url and webhook_id must be configured")
 			}
 
@@ -32,15 +35,8 @@ func NewBootPushCmd(deps *CommandDeps) *cobra.Command {
 				return err
 			}
 
-			var wolAddr string
-			var wolPort int
-			if deps.Config.WakeOnLan != nil {
-				wolAddr = deps.Config.WakeOnLan.Address
-				wolPort = deps.Config.WakeOnLan.Port
-			}
-
-			client := homeassistant.NewClient(deps.Config.HomeAssistant.URL, deps.Config.HomeAssistant.WebhookID, nil)
-			if err := client.UpdateBootOptions(cmd.Context(), deps.Config.Host.MACAddress, deps.Config.Host.Address, options, wolAddr, wolPort); err != nil {
+			client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
+			if err := client.UpdateBootOptions(cmd.Context(), deps.Config.Host.MAC, deps.Config.Host.Address, options, deps.Config.WakeOnLan.Address, deps.Config.WakeOnLan.Port); err != nil {
 				return err
 			}
 

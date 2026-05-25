@@ -143,7 +143,7 @@ func ValidateHAURL(ctx context.Context, s string, skipCheck bool, urlChecker fun
 		return err
 	}
 
-	if skipCheck {
+	if skipCheck || urlChecker == nil {
 		log.Debug().Msg("Skipping Home Assistant URL connection check as requested")
 		return nil
 	}

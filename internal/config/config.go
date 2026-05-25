@@ -3,10 +3,10 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
-	"github.com/go-viper/mapstructure/v2"
-	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,11 +30,10 @@ const (
 )
 
 type Config struct {
-	Host          HostConfig          `yaml:"host"`
-	WakeOnLan     *WakeOnLanConfig    `yaml:"wake_on_lan,omitempty"`
-	HomeAssistant HomeAssistantConfig `yaml:"homeassistant"`
-	Grub          *GrubConfig         `yaml:"grub,omitempty"`
-	Daemon        DaemonConfig        `yaml:"daemon"`
+	Host      HostConfig      `yaml:"host"`
+	WakeOnLan WakeOnLanConfig `yaml:"wake_on_lan"`
+	Grub      GrubConfig      `yaml:"grub"`
+	Daemon    DaemonConfig    `yaml:"daemon"`
 }
 
 type DaemonConfig struct {
@@ -44,8 +43,8 @@ type DaemonConfig struct {
 }
 
 type GrubConfig struct {
-	ConfigPath      string `yaml:"config_path,omitempty"`
-	WaitTimeSeconds int    `yaml:"wait_time_seconds,omitempty"`
+	Path            string `yaml:"path,omitempty"`
+	NetworkWaitTime int    `yaml:"network_wait_time,omitempty"`
 	URL             string `yaml:"url,omitempty"`
 }
 
@@ -55,105 +54,121 @@ type WakeOnLanConfig struct {
 }
 
 type HostConfig struct {
-	Address    string `yaml:"address"`
-	MACAddress string `yaml:"mac"`
-}
-
-type HomeAssistantConfig struct {
-	URL       string `yaml:"url"`
-	WebhookID string `yaml:"webhook_id"`
+	Address string `yaml:"address"`
+	MAC     string `yaml:"mac"`
 }
 
 func (c *Config) Minimal() *Config {
 	cp := *c
-	if cp.WakeOnLan != nil {
-		wol := *cp.WakeOnLan
-		if wol.Address == DefaultWolBroadcastAddress {
-			wol.Address = ""
-		}
-		if wol.Port == DefaultWolBroadcastPort {
-			wol.Port = 0
-		}
-		if wol.Address == "" && wol.Port == 0 {
-			cp.WakeOnLan = nil
-		} else {
-			cp.WakeOnLan = &wol
-		}
+	if cp.WakeOnLan.Address == DefaultWolBroadcastAddress {
+		cp.WakeOnLan.Address = ""
 	}
-	if cp.Grub != nil {
-		grub := *cp.Grub
-		if grub.WaitTimeSeconds == DefaultGrubWaitSeconds {
-			grub.WaitTimeSeconds = 0
-		}
-		if grub.WaitTimeSeconds == 0 && grub.ConfigPath == "" && grub.URL == "" {
-			cp.Grub = nil
-		} else {
-			cp.Grub = &grub
-		}
+	if cp.WakeOnLan.Port == DefaultWolBroadcastPort {
+		cp.WakeOnLan.Port = 0
+	}
+	if cp.Grub.NetworkWaitTime == DefaultGrubWaitSeconds {
+		cp.Grub.NetworkWaitTime = 0
 	}
 	return &cp
 }
 
-func NewViper(cfgFile string) *viper.Viper {
-	v := viper.New()
-	v.SetEnvPrefix("GRUBSTATION")
-	v.AutomaticEnv()
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
-
-	if cfgFile != "" {
-		v.SetConfigFile(cfgFile)
-	} else {
-		v.AddConfigPath(".")
-		v.SetConfigName("config")
-		v.SetConfigType("yaml")
+func LoadConfig(path string) (*Config, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
-	return v
-}
+	defer f.Close()
 
-func Unmarshal(v *viper.Viper) (*Config, error) {
 	var cfg Config
-	// Use "yaml" tags for unmarshaling to avoid redundancy
-	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
-		dc.TagName = "yaml"
-	}); err != nil {
+	decoder := yaml.NewDecoder(f)
+	if err := decoder.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
 	}
 
 	if cfg.Daemon.Port == 0 {
 		cfg.Daemon.Port = DefaultAgentPort
 	}
-
-	// Ensure sub-structs exist if we want to apply defaults
-	if cfg.Grub == nil {
-		cfg.Grub = &GrubConfig{}
-	}
-	if cfg.Grub.WaitTimeSeconds == 0 {
-		cfg.Grub.WaitTimeSeconds = DefaultGrubWaitSeconds
+	if cfg.Grub.NetworkWaitTime == 0 {
+		cfg.Grub.NetworkWaitTime = DefaultGrubWaitSeconds
 	}
 
 	return &cfg, nil
 }
 
 func Save(cfg *Config, path string) error {
-	out, err := yaml.Marshal(cfg.Minimal())
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
 	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
 
-	if err := os.WriteFile(path, out, 0o600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	encoder := yaml.NewEncoder(f)
+	encoder.SetIndent(2)
+	return encoder.Encode(cfg.Minimal())
+}
+
+func SaveExhaustive(cfg *Config, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	encoder := yaml.NewEncoder(f)
+	encoder.SetIndent(2)
+	return encoder.Encode(cfg)
+}
+
+func ValidateURL(s string) error {
+	if s == "" {
+		return fmt.Errorf("URL cannot be empty")
+	}
+	if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
+		return fmt.Errorf("URL must start with http:// or https://")
 	}
 	return nil
 }
 
-func SaveExhaustive(cfg *Config, path string) error {
-	out, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+func ValidatePort(s string) error {
+	if s == "" {
+		return fmt.Errorf("port cannot be empty")
 	}
+	p, err := strconv.Atoi(s)
+	if err != nil {
+		return fmt.Errorf("invalid port: %w", err)
+	}
+	if p < 1 || p > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535")
+	}
+	return nil
+}
 
-	if err := os.WriteFile(path, out, 0o600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+func ValidateGrubWaitTime(s string) error {
+	if s == "" {
+		return nil // Optional
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return fmt.Errorf("invalid number")
+	}
+	if v < 0 || v > 3600 {
+		return fmt.Errorf("wait time must be between 0 and 3600 seconds")
+	}
+	return nil
+}
+
+func ValidateWebhookID(s string) error {
+	if s == "" {
+		return fmt.Errorf("webhook ID cannot be empty")
+	}
+	if len(s) < 6 {
+		return fmt.Errorf("webhook ID is too short")
 	}
 	return nil
 }

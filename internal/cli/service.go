@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/jjack/grubstation/internal/config"
 	"github.com/jjack/grubstation/internal/homeassistant"
 	"github.com/spf13/cobra"
 )
@@ -69,8 +70,10 @@ func NewServiceRemoveCmd(deps *CommandDeps) *cobra.Command {
 				return err
 			}
 
-			if deps.Config.HomeAssistant.URL != "" && deps.Config.HomeAssistant.WebhookID != "" {
-				mac := deps.Config.Host.MACAddress
+			// Try to unregister from HA first if configured
+			state, _ := config.LoadState(deps.ConfigFile)
+			if state.HADaemonURL != "" && state.WebhookID != "" {
+				mac := deps.Config.Host.MAC
 				addr := deps.Config.Host.Address
 
 				if mac == "" || addr == "" {
@@ -88,7 +91,7 @@ func NewServiceRemoveCmd(deps *CommandDeps) *cobra.Command {
 				}
 
 				cmd.Printf("Unregistering from Home Assistant...\n")
-				client := homeassistant.NewClient(deps.Config.HomeAssistant.URL, deps.Config.HomeAssistant.WebhookID, nil)
+				client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 				if err := client.UnregisterHost(cmd.Context(), mac, addr); err != nil {
 					cmd.Printf("Warning: failed to unregister from Home Assistant: %v\n", err)
 				}

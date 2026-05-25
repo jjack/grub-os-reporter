@@ -7,6 +7,7 @@ import (
 )
 
 type State struct {
+	Paired      bool   `json:"paired"`
 	WebhookID   string `json:"webhook_id,omitempty"`
 	APIKey      string `json:"api_key,omitempty"`
 	HADaemonURL string `json:"ha_daemon_url,omitempty"`
@@ -17,29 +18,37 @@ func LoadState(configPath string) (*State, error) {
 	dir := filepath.Dir(configPath)
 	statePath := filepath.Join(dir, "state.json")
 
-	data, err := os.ReadFile(statePath)
+	f, err := os.Open(statePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &State{}, nil
+			return &State{Paired: false}, nil
 		}
 		return nil, err
 	}
+	defer f.Close()
 
 	var state State
-	if err := json.Unmarshal(data, &state); err != nil {
+	if err := json.NewDecoder(f).Decode(&state); err != nil {
 		return nil, err
 	}
 	return &state, nil
 }
 
-func SaveState(configPath string, state *State) error {
+func (s *State) Save(configPath string) error {
 	dir := filepath.Dir(configPath)
 	statePath := filepath.Join(dir, "state.json")
 
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 
-	return os.WriteFile(statePath, data, 0o600)
+	f, err := os.Create(statePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	encoder := json.NewEncoder(f)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(s)
 }

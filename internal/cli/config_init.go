@@ -21,25 +21,21 @@ func NewConfigInitCmd(deps *CommandDeps) *cobra.Command {
 
 			cfg := &config.Config{
 				Host: config.HostConfig{
-					Address:    "127.0.0.1",
-					MACAddress: "00:00:00:00:00:00",
+					Address: "127.0.0.1",
+					MAC:     "00:00:00:00:00:00",
 				},
-				WakeOnLan: &config.WakeOnLanConfig{
+				WakeOnLan: config.WakeOnLanConfig{
 					Address: config.DefaultWolBroadcastAddress,
 					Port:    config.DefaultWolBroadcastPort,
-				},
-				HomeAssistant: config.HomeAssistantConfig{
-					URL:       "http://homeassistant.local:8123",
-					WebhookID: "CHANGE_ME",
 				},
 				Daemon: config.DaemonConfig{
 					Port:              config.DefaultAgentPort,
 					ReportBootOptions: true,
 					APIKey:            "REPLACE_ME_OR_LEAVE_EMPTY_FOR_TOFU",
 				},
-				Grub: &config.GrubConfig{
-					ConfigPath:      "/boot/grub/grub.cfg",
-					WaitTimeSeconds: 15,
+				Grub: config.GrubConfig{
+					Path:            "/boot/grub/grub.cfg",
+					NetworkWaitTime: 15,
 					URL:             "http://homeassistant.local:8123",
 				},
 			}

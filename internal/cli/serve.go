@@ -26,20 +26,21 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 			if deps.Config.Daemon.ReportBootOptions {
 				// Drift detection
 				waitTime := config.DefaultGrubWaitSeconds
-				targetURL := deps.Config.HomeAssistant.URL
-				if deps.Config.Grub != nil {
-					if deps.Config.Grub.WaitTimeSeconds != 0 {
-						waitTime = deps.Config.Grub.WaitTimeSeconds
-					}
-					if deps.Config.Grub.URL != "" {
-						targetURL = deps.Config.Grub.URL
-					}
+				if deps.Config.Grub.NetworkWaitTime != 0 {
+					waitTime = deps.Config.Grub.NetworkWaitTime
+				}
+
+				// Get HA details from state for drift check if needed
+				state, _ := config.LoadState(deps.ConfigFile)
+				targetURL := state.HADaemonURL
+				if deps.Config.Grub.URL != "" {
+					targetURL = deps.Config.Grub.URL
 				}
 
 				drift, err := deps.Grub.CheckDrift(grub.SetupOptions{
-					TargetMAC:       deps.Config.Host.MACAddress,
+					TargetMAC:       deps.Config.Host.MAC,
 					TargetURL:       targetURL,
-					AuthToken:       deps.Config.HomeAssistant.WebhookID,
+					AuthToken:       state.WebhookID,
 					WaitTimeSeconds: waitTime,
 				})
 				if err == nil && drift {
@@ -55,35 +56,22 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 				log.Debug().Err(err).Msg("Failed to load pairing state")
 			} else if state.WebhookID != "" {
 				log.Info().Msg("Applying persistent pairing state")
-				deps.Config.HomeAssistant.WebhookID = state.WebhookID
-				deps.Config.HomeAssistant.URL = state.HADaemonURL
-				deps.Config.Daemon.APIKey = state.APIKey
-				if deps.Config.Grub == nil {
-					deps.Config.Grub = &config.GrubConfig{}
-				}
-				deps.Config.Grub.URL = state.HAGrubURL
+				// We don't overwrite Config anymore, we use State directly for HA
 			}
 
 			var haClient *homeassistant.Client
-			if deps.Config.HomeAssistant.URL != "" && deps.Config.HomeAssistant.WebhookID != "" {
-				haClient = homeassistant.NewClient(deps.Config.HomeAssistant.URL, deps.Config.HomeAssistant.WebhookID, nil)
-			}
-
-			var wolAddr string
-			var wolPort int
-			if deps.Config.WakeOnLan != nil {
-				wolAddr = deps.Config.WakeOnLan.Address
-				wolPort = deps.Config.WakeOnLan.Port
+			if state.HADaemonURL != "" && state.WebhookID != "" {
+				haClient = homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 			}
 
 			d := daemon.New(daemon.Config{
 				Port:                deps.Config.Daemon.Port,
 				ReportBootOptions:   deps.Config.Daemon.ReportBootOptions,
-				APIKey:              deps.Config.Daemon.APIKey,
-				MACAddress:          deps.Config.Host.MACAddress,
+				APIKey:              state.APIKey, // Use key from state
+				MACAddress:          deps.Config.Host.MAC,
 				HostAddress:         deps.Config.Host.Address,
-				WolBroadcastAddress: wolAddr,
-				WolBroadcastPort:    wolPort,
+				WolBroadcastAddress: deps.Config.WakeOnLan.Address,
+				WolBroadcastPort:    deps.Config.WakeOnLan.Port,
 			}, daemon.Metadata{
 				OS:             host.Platform(),
 				Version:        version.Version,
@@ -92,16 +80,18 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 
 			d.OnPair = func(req daemon.PairRequest) error {
 				s := &config.State{
+					Paired:      true,
 					WebhookID:   req.WebhookID,
 					APIKey:      req.APIKey,
 					HADaemonURL: req.HADaemonURL,
 					HAGrubURL:   req.HAGrubURL,
 				}
-				return config.SaveState(deps.ConfigFile, s)
+				return s.Save(deps.ConfigFile)
 			}
 
 			d.OnUnpair = func() error {
-				return config.SaveState(deps.ConfigFile, &config.State{})
+				s := &config.State{Paired: false}
+				return s.Save(deps.ConfigFile)
 			}
 
 			return d.Run(cmd.Context())
