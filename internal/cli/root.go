@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rs/zerolog"
 	"github.com/jjack/grubstation/internal/config"
 	"github.com/jjack/grubstation/internal/grub"
 	"github.com/jjack/grubstation/internal/homeassistant"
 	"github.com/jjack/grubstation/internal/host"
 	"github.com/jjack/grubstation/internal/servicemanager"
 	"github.com/jjack/grubstation/internal/version"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

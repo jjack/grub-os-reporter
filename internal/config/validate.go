@@ -1,8 +1,8 @@
 package config
 
 import (
-	log "github.com/rs/zerolog/log"
 	"errors"
+	log "github.com/rs/zerolog/log"
 	"net"
 	"net/url"
 	"regexp"
