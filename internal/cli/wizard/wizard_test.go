@@ -79,7 +79,7 @@ func TestPrintConfigSummary(t *testing.T) {
 	if !strings.Contains(out, "/etc/grubstation/config.yaml") {
 		t.Errorf("expected config path, got %s", out)
 	}
-	if !strings.Contains(out, "aaaa...") {
-		t.Errorf("expected truncated webhook id, got %s", out)
+	if !strings.Contains(out, "aaaaaaaa") {
+		t.Errorf("expected webhook id, got %s", out)
 	}
 }

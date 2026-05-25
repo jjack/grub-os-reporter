@@ -64,54 +64,34 @@ type HomeAssistantConfig struct {
 	WebhookID string `yaml:"webhook_id"`
 }
 
-type Exporter struct {
-	Config     Config
-	Exhaustive bool
-	Mask       bool
-}
-
-func (e *Exporter) ToYAML() (string, error) {
-	displayCfg := e.Config
-
-	// If sub-configs are empty or default, nil them out so omitempty works
-	if !e.Exhaustive {
-		if displayCfg.WakeOnLan != nil {
-			wol := *displayCfg.WakeOnLan
-			displayCfg.WakeOnLan = &wol
-			if displayCfg.WakeOnLan.Address == DefaultWolBroadcastAddress {
-				displayCfg.WakeOnLan.Address = ""
-			}
-			if displayCfg.WakeOnLan.Port == DefaultWolBroadcastPort {
-				displayCfg.WakeOnLan.Port = 0
-			}
-			if displayCfg.WakeOnLan.Address == "" && displayCfg.WakeOnLan.Port == 0 {
-				displayCfg.WakeOnLan = nil
-			}
+func (c *Config) Minimal() *Config {
+	cp := *c
+	if cp.WakeOnLan != nil {
+		wol := *cp.WakeOnLan
+		if wol.Address == DefaultWolBroadcastAddress {
+			wol.Address = ""
 		}
-		if displayCfg.Grub != nil {
-			grub := *displayCfg.Grub
-			displayCfg.Grub = &grub
-			if displayCfg.Grub.WaitTimeSeconds == DefaultGrubWaitSeconds {
-				displayCfg.Grub.WaitTimeSeconds = 0
-			}
-			if displayCfg.Grub.WaitTimeSeconds == 0 && displayCfg.Grub.ConfigPath == "" && displayCfg.Grub.URL == "" {
-				displayCfg.Grub = nil
-			}
+		if wol.Port == DefaultWolBroadcastPort {
+			wol.Port = 0
+		}
+		if wol.Address == "" && wol.Port == 0 {
+			cp.WakeOnLan = nil
+		} else {
+			cp.WakeOnLan = &wol
 		}
 	}
-
-	if e.Mask && len(displayCfg.HomeAssistant.WebhookID) > 8 {
-		displayCfg.HomeAssistant.WebhookID = displayCfg.HomeAssistant.WebhookID[:4] + "..." + displayCfg.HomeAssistant.WebhookID[len(displayCfg.HomeAssistant.WebhookID)-4:]
-	} else if e.Mask && displayCfg.HomeAssistant.WebhookID != "" {
-		displayCfg.HomeAssistant.WebhookID = "***"
+	if cp.Grub != nil {
+		grub := *cp.Grub
+		if grub.WaitTimeSeconds == DefaultGrubWaitSeconds {
+			grub.WaitTimeSeconds = 0
+		}
+		if grub.WaitTimeSeconds == 0 && grub.ConfigPath == "" && grub.URL == "" {
+			cp.Grub = nil
+		} else {
+			cp.Grub = &grub
+		}
 	}
-
-	out, err := yaml.Marshal(displayCfg)
-	if err != nil {
-		return "", err
-	}
-
-	return string(out), nil
+	return &cp
 }
 
 func NewViper(cfgFile string) *viper.Viper {
@@ -155,26 +135,24 @@ func Unmarshal(v *viper.Viper) (*Config, error) {
 }
 
 func Save(cfg *Config, path string) error {
-	exporter := &Exporter{Config: *cfg}
-	out, err := exporter.ToYAML()
+	out, err := yaml.Marshal(cfg.Minimal())
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
+	if err := os.WriteFile(path, out, 0o600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 	return nil
 }
 
 func SaveExhaustive(cfg *Config, path string) error {
-	exporter := &Exporter{Config: *cfg, Exhaustive: true}
-	out, err := exporter.ToYAML()
+	out, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
+	if err := os.WriteFile(path, out, 0o600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 	return nil

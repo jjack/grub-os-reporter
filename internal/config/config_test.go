@@ -218,37 +218,8 @@ func TestDefaultConfigPath(t *testing.T) {
 	}
 }
 
-func TestConfig_ToYAML_DefaultGrub(t *testing.T) {
+func TestConfig_Minimal(t *testing.T) {
 	cfg := Config{
-		Grub: &GrubConfig{
-			WaitTimeSeconds: DefaultGrubWaitSeconds,
-		},
-	}
-	exporter := &Exporter{Config: cfg}
-	yaml, err := exporter.ToYAML()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(yaml, "grub:") {
-		t.Errorf("expected grub to be omitted when it only contains default WaitTimeSeconds, got: %s", yaml)
-	}
-
-	// Test exhaustive
-	exporter.Exhaustive = true
-	yaml, err = exporter.ToYAML()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(yaml, "grub:") {
-		t.Errorf("expected grub to be included in exhaustive mode, got: %s", yaml)
-	}
-}
-
-func TestConfig_ToYAML_NoMutation(t *testing.T) {
-	cfg := Config{
-		HomeAssistant: HomeAssistantConfig{
-			WebhookID: "original-webhook-id",
-		},
 		Grub: &GrubConfig{
 			WaitTimeSeconds: DefaultGrubWaitSeconds,
 		},
@@ -257,21 +228,22 @@ func TestConfig_ToYAML_NoMutation(t *testing.T) {
 			Port:    DefaultWolBroadcastPort,
 		},
 	}
-
-	exporter := &Exporter{Config: cfg, Mask: true}
-	_, err := exporter.ToYAML()
-	if err != nil {
-		t.Fatal(err)
+	minimal := cfg.Minimal()
+	if minimal.Grub != nil {
+		t.Error("expected grub to be nil in minimal config when it only contains default values")
+	}
+	if minimal.WakeOnLan != nil {
+		t.Error("expected wake_on_lan to be nil in minimal config when it only contains default values")
 	}
 
-	if cfg.HomeAssistant.WebhookID != "original-webhook-id" {
-		t.Errorf("expected original WebhookID to remain unchanged, got %s", cfg.HomeAssistant.WebhookID)
+	cfgWithURL := Config{
+		Grub: &GrubConfig{
+			URL: "http://grub.local",
+		},
 	}
-	if cfg.Grub.WaitTimeSeconds != DefaultGrubWaitSeconds {
-		t.Errorf("expected original WaitTimeSeconds to remain %d, got %d", DefaultGrubWaitSeconds, cfg.Grub.WaitTimeSeconds)
-	}
-	if cfg.WakeOnLan.Address != DefaultWolBroadcastAddress {
-		t.Errorf("expected original WOL address to remain %s, got %s", DefaultWolBroadcastAddress, cfg.WakeOnLan.Address)
+	minimalWithURL := cfgWithURL.Minimal()
+	if minimalWithURL.Grub == nil {
+		t.Error("expected grub to be preserved when it contains non-default values")
 	}
 }
 

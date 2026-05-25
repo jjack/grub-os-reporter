@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/yarlson/tap"
+	"gopkg.in/yaml.v3"
 )
 
 type SystemState struct {
@@ -440,20 +441,15 @@ func AssembleConfig(hostAddress, mac, wolAddress, haURL, haWebhook string, agent
 }
 
 func PrintConfigSummary(cmd *cobra.Command, cfg *config.Config, cfgPath string) {
-	exporter := &config.Exporter{
-		Config:     *cfg,
-		Mask:       true,
-		Exhaustive: false,
-	}
-	out, err := exporter.ToYAML()
+	out, err := yaml.Marshal(cfg.Minimal())
 	if err != nil {
 		tap.Message(fmt.Sprintf("Error generating summary: %v", err))
 		return
 	}
 
 	tap.Message(fmt.Sprintf("Configuration saved to %s", cfgPath))
-	out = fmt.Sprintf("\n---\n%s", out)
-	tap.Box(out, " Configuration Preview ", tap.BoxOptions{
+	outStr := fmt.Sprintf("\n---\n%s", string(out))
+	tap.Box(outStr, " Configuration Preview ", tap.BoxOptions{
 		ContentPadding: 2,
 	})
 }
