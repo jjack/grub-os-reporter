@@ -6,9 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jjack/grubstation/internal/config"
-	"github.com/jjack/grubstation/internal/daemon"
 	"github.com/jjack/grubstation/internal/homeassistant"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -17,13 +15,6 @@ func NewBootPushCmd(deps *CommandDeps) *cobra.Command {
 		Use:   "push",
 		Short: "Push the list of available OSes to Home Assistant",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := daemon.RequestPushViaSocket(cmd.Context()); err == nil {
-				cmd.Println("Successfully pushed boot options to Home Assistant (via running daemon)")
-				return nil
-			} else {
-				log.Debug().Err(err).Msg("Could not push via daemon socket, falling back to direct push")
-			}
-
 			// Load state for HA credentials
 			state, _ := config.LoadState(deps.ConfigFile)
 			if state.HADaemonURL == "" || state.WebhookID == "" {
