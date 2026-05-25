@@ -40,6 +40,15 @@ type Config struct {
 	WolBroadcastPort    int
 }
 
+// PairRequest is the payload for the /pair endpoint.
+type PairRequest struct {
+	WebhookID   string `json:"webhook_id"`
+	APIKey      string `json:"api_key"`
+	HADaemonURL string `json:"ha_daemon_url"`
+	HAGrubURL   string `json:"ha_grub_url"`
+	ApplyConfig bool   `json:"apply_config"`
+}
+
 // Metadata holds system information.
 type Metadata struct {
 	OS             string `json:"os"`
@@ -55,7 +64,11 @@ type Daemon struct {
 	HAClient        *homeassistant.Client
 	ShutdownHandler func() error
 
-	mu sync.Mutex
+	OnPair   func(req PairRequest) error
+	OnUnpair func() error
+
+	currentAPIKey string
+	mu            sync.Mutex
 }
 
 func New(cfg Config, meta Metadata, g *grub.Grub, haClient *homeassistant.Client) *Daemon {
@@ -68,6 +81,18 @@ func New(cfg Config, meta Metadata, g *grub.Grub, haClient *homeassistant.Client
 			return shutdownSystem()
 		},
 	}
+}
+
+func (d *Daemon) getAPIKey() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.currentAPIKey
+}
+
+func (d *Daemon) setAPIKey(key string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.currentAPIKey = key
 }
 
 // TriggerUpdate performs a boot options push to Home Assistant.
@@ -139,9 +164,11 @@ func (d *Daemon) ensureToken() (string, error) {
 			return "", fmt.Errorf("failed to generate dynamic token: %w", err)
 		}
 		log.Info().Msg("Using dynamically generated TOFU token")
+		d.setAPIKey(generated)
 		return generated, nil
 	}
 	log.Info().Msg("Using configured API key")
+	d.setAPIKey(token)
 	return token, nil
 }
 
@@ -199,9 +226,84 @@ func (d *Daemon) newHTTPServer(token string) *http.Server {
 		_ = json.NewEncoder(w).Encode(status)
 	})
 
+	mux.HandleFunc("POST /pair", func(w http.ResponseWriter, r *http.Request) {
+		var req PairRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": "Invalid request body"})
+			return
+		}
+
+		if req.WebhookID == "" || req.APIKey == "" || req.HADaemonURL == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": "Missing required fields"})
+			return
+		}
+
+		log.Info().Msg("Pairing request received")
+
+		d.setAPIKey(req.APIKey)
+
+		if d.OnPair != nil {
+			if err := d.OnPair(req); err != nil {
+				log.Error().Err(err).Msg("OnPair callback failed")
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": "Failed to persist pairing state"})
+				return
+			}
+		}
+
+		// Update HA client
+		d.mu.Lock()
+		d.HAClient = homeassistant.NewClient(req.HADaemonURL, req.WebhookID, nil)
+		d.mu.Unlock()
+
+		// Trigger an update
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := d.performInitialHandshake(ctx, req.APIKey); err != nil {
+				log.Error().Err(err).Msg("Handshake after pairing failed")
+			}
+		}()
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
+	mux.HandleFunc("POST /unpair", func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer "+d.getAPIKey() {
+			log.Warn().Interface("remote_addr", r.RemoteAddr).Msg("Unauthorized unpair request")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": "Forbidden"})
+			return
+		}
+
+		log.Info().Msg("Unpairing requested")
+
+		d.setAPIKey("")
+
+		if d.OnUnpair != nil {
+			if err := d.OnUnpair(); err != nil {
+				log.Error().Err(err).Msg("OnUnpair callback failed")
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": "Failed to clear pairing state"})
+				return
+			}
+		}
+
+		d.mu.Lock()
+		d.HAClient = nil
+		d.mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+
 	mux.HandleFunc("POST /shutdown", func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+token {
+		if auth != "Bearer "+d.getAPIKey() {
 			log.Warn().Interface("remote_addr", r.RemoteAddr).Msg("Unauthorized shutdown request")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)

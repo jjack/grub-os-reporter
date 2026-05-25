@@ -39,7 +39,7 @@ func (cd *CommandDeps) Manager(ctx context.Context) (servicemanager.Manager, err
 	return mgr, nil
 }
 
-func (cli *CLI) LoadConfig(cmd *cobra.Command, cfgFile string) error {
+func (cli *CLI) LoadConfig(cmd *cobra.Command, cfgFile string) (string, error) {
 	v := config.NewViper(cfgFile)
 	// Bind flags to viper keys
 	_ = v.BindPFlag("grub.config_path", cmd.Flags().Lookup(config.FlagGrubConfig))
@@ -54,24 +54,31 @@ func (cli *CLI) LoadConfig(cmd *cobra.Command, cfgFile string) error {
 
 	if err := v.ReadInConfig(); err != nil {
 		if cfgFile != "" {
-			return fmt.Errorf("failed to read config file %s: %w", cfgFile, err)
+			return "", fmt.Errorf("failed to read config file %s: %w", cfgFile, err)
 		}
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to read config file: %w", err)
+			return "", fmt.Errorf("failed to read config file: %w", err)
 		}
 	}
 
 	cfg, err := config.Unmarshal(v)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if err := cfg.Validate(); err != nil {
-		return err
+		return "", err
 	}
 
 	cli.Config = cfg
-	return nil
+	resolved := v.ConfigFileUsed()
+	if resolved == "" {
+		resolved = cfgFile
+	}
+	if resolved == "" {
+		resolved = config.DefaultConfigPath()
+	}
+	return resolved, nil
 }
 
 func NewCLI() *CLI {
@@ -101,12 +108,13 @@ func NewCLI() *CLI {
 				zerolog.SetGlobalLevel(zerolog.DebugLevel)
 			}
 
-			if err := cli.LoadConfig(cmd, cfgFile); err != nil {
+			resolved, err := cli.LoadConfig(cmd, cfgFile)
+			if err != nil {
 				return err
 			}
 
 			deps.Config = cli.Config
-			deps.ConfigFile = cfgFile
+			deps.ConfigFile = resolved
 			return nil
 		},
 	}

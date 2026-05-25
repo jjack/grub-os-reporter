@@ -49,6 +49,21 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 				}
 			}
 
+			// Load and apply pairing state (takes precedence over config.yaml)
+			state, err := config.LoadState(deps.ConfigFile)
+			if err != nil {
+				log.Debug().Err(err).Msg("Failed to load pairing state")
+			} else if state.WebhookID != "" {
+				log.Info().Msg("Applying persistent pairing state")
+				deps.Config.HomeAssistant.WebhookID = state.WebhookID
+				deps.Config.HomeAssistant.URL = state.HADaemonURL
+				deps.Config.Daemon.APIKey = state.APIKey
+				if deps.Config.Grub == nil {
+					deps.Config.Grub = &config.GrubConfig{}
+				}
+				deps.Config.Grub.URL = state.HAGrubURL
+			}
+
 			var haClient *homeassistant.Client
 			if deps.Config.HomeAssistant.URL != "" && deps.Config.HomeAssistant.WebhookID != "" {
 				haClient = homeassistant.NewClient(deps.Config.HomeAssistant.URL, deps.Config.HomeAssistant.WebhookID, nil)
@@ -74,6 +89,20 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 				Version:        version.Version,
 				ServiceManager: mgrName,
 			}, deps.Grub, haClient)
+
+			d.OnPair = func(req daemon.PairRequest) error {
+				s := &config.State{
+					WebhookID:   req.WebhookID,
+					APIKey:      req.APIKey,
+					HADaemonURL: req.HADaemonURL,
+					HAGrubURL:   req.HAGrubURL,
+				}
+				return config.SaveState(deps.ConfigFile, s)
+			}
+
+			d.OnUnpair = func() error {
+				return config.SaveState(deps.ConfigFile, &config.State{})
+			}
 
 			return d.Run(cmd.Context())
 		},

@@ -37,11 +37,12 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 				// Use a temporary CLI instance to load config
 				tempCLI := &CLI{}
 				cfgFile, _ := cmd.Flags().GetString("config")
-				if err := tempCLI.LoadConfig(cmd, cfgFile); err != nil {
+				resolved, err := tempCLI.LoadConfig(cmd, cfgFile)
+				if err != nil {
 					return err
 				}
 				deps.Config = tempCLI.Config
-				deps.ConfigFile = cfgFile
+				deps.ConfigFile = resolved
 				return nil
 			}
 			return nil // Override root config loading for wizard
