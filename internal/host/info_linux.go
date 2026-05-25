@@ -4,17 +4,18 @@ package host
 
 import (
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 func (h *Host) isPhysicalInterface(inf net.Interface) bool {
 	virtualInterfaces := []string{"veth", "docker", "br-", "virbr", "vmnet", "vboxnet"}
 	for _, prefix := range virtualInterfaces {
 		if strings.HasPrefix(inf.Name, prefix) {
-			slog.Debug("Interface is virtual (skipping)", "name", inf.Name, "prefix", prefix)
+			log.Debug().Str("name", inf.Name).Str("prefix", prefix).Msg("Interface is virtual (skipping)")
 			return false
 		}
 	}

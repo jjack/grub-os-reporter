@@ -4,10 +4,10 @@ package cli
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/jjack/grubstation/internal/daemon"
 	"github.com/jjack/grubstation/internal/homeassistant"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -20,7 +20,7 @@ func NewBootPushCmd(deps *CommandDeps) *cobra.Command {
 				cmd.Println("Successfully pushed boot options to Home Assistant (via running daemon)")
 				return nil
 			} else {
-				slog.Debug("Could not push via daemon socket, falling back to direct push", "error", err)
+				log.Debug().Err(err).Msg("Could not push via daemon socket, falling back to direct push")
 			}
 
 			if deps.Config.HomeAssistant.URL == "" || deps.Config.HomeAssistant.WebhookID == "" {

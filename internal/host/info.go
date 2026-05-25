@@ -3,9 +3,10 @@ package host
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
+
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -53,9 +54,9 @@ func (h *Host) GetWOLInterfaces() ([]net.Interface, error) {
 
 	var wolIfaces []net.Interface
 	for _, inf := range interfaces {
-		slog.Debug("Checking to see if interface is suitable for WOL", "name", inf.Name)
+		log.Debug().Str("name", inf.Name).Msg("Checking to see if interface is suitable for WOL")
 		if h.isWOLCapableInterface(inf) {
-			slog.Debug("Interface is suitable for WOL", "name", inf.Name)
+			log.Debug().Str("name", inf.Name).Msg("Interface is suitable for WOL")
 			wolIfaces = append(wolIfaces, inf)
 		}
 	}
@@ -114,24 +115,24 @@ func getLastIP(ipnet *net.IPNet) net.IP {
 	for i := 0; i < 4; i++ {
 		last[i] = ip[i] | ^mask[i]
 	}
-	slog.Debug("Computed broadcast address", "broadcast", last.String(), "ip", ip.String(), "mask", mask.String())
+	log.Debug().Str("broadcast", last.String()).Str("ip", ip.String()).Str("mask", mask.String()).Msg("Computed broadcast address")
 	return last
 }
 
 // isWOLCapableInterface checks if the given network interface is suitable for WOL (has a MAC address, is up, is not loopback, and is not virtual).
 func (h *Host) isWOLCapableInterface(inf net.Interface) bool {
 	if len(inf.HardwareAddr) == 0 {
-		slog.Debug("Interface has no MAC address (skipping)", "name", inf.Name)
+		log.Debug().Str("name", inf.Name).Msg("Interface has no MAC address (skipping)")
 		return false
 	}
 
 	if inf.Flags&net.FlagUp == 0 {
-		slog.Debug("Interface is not up (skipping)", "name", inf.Name)
+		log.Debug().Str("name", inf.Name).Msg("Interface is not up (skipping)")
 		return false
 	}
 
 	if inf.Flags&net.FlagLoopback != 0 {
-		slog.Debug("Interface is loopback (skipping)", "name", inf.Name)
+		log.Debug().Str("name", inf.Name).Msg("Interface is loopback (skipping)")
 		return false
 	}
 

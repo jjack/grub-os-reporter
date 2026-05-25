@@ -6,11 +6,12 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/rs/zerolog/log"
 )
 
 var SocketPath = "/var/run/grubstation.sock"
@@ -25,7 +26,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	go func() {
 		sig := <-sigChan
-		slog.Info("Received signal, stopping daemon", "signal", sig)
+		log.Info().Interface("signal", sig).Msg("Received signal, stopping daemon")
 		cancel()
 	}()
 
@@ -37,7 +38,7 @@ func (d *Daemon) listenUnixSocket(ctx context.Context, token string) {
 	_ = os.Remove(path)
 	l, err := net.Listen("unix", path)
 	if err != nil {
-		slog.Debug("Failed to create unix socket", "error", err)
+		log.Debug().Err(err).Msg("Failed to create unix socket")
 		return
 	}
 	defer func() { _ = l.Close() }()
@@ -55,7 +56,7 @@ func (d *Daemon) listenUnixSocket(ctx context.Context, token string) {
 			case <-ctx.Done():
 				return
 			default:
-				slog.Debug("Unix socket accept error", "error", err)
+				log.Debug().Err(err).Msg("Unix socket accept error")
 				continue
 			}
 		}
@@ -68,9 +69,9 @@ func (d *Daemon) handleUnixConnection(ctx context.Context, conn net.Conn, token 
 	scanner := bufio.NewScanner(conn)
 	if scanner.Scan() {
 		if cmd := scanner.Text(); cmd == "push" {
-			slog.Info("Push requested via local Unix socket")
+			log.Info().Msg("Push requested via local Unix socket")
 			if err := d.TriggerUpdate(ctx); err != nil {
-				slog.Error("Socket requested push failed", "error", err)
+				log.Error().Err(err).Msg("Socket requested push failed")
 				_, _ = fmt.Fprintf(conn, "ERROR: %v\n", err)
 			} else {
 				_, _ = fmt.Fprintf(conn, "OK\n")

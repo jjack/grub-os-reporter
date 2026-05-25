@@ -5,12 +5,12 @@ package daemon
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/jjack/grubstation/internal/servicemanager"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sys/windows/svc"
 )
 
@@ -34,7 +34,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	go func() {
 		sig := <-sigChan
-		slog.Info("Received signal, stopping daemon", "signal", sig)
+		log.Info().Interface("signal", sig).Msg("Received signal, stopping daemon")
 		cancel()
 	}()
 
@@ -65,7 +65,7 @@ loop:
 		select {
 		case err := <-errChan:
 			if err != nil {
-				slog.Error("Daemon failed", "error", err)
+				log.Error().Err(err).Msg("Daemon failed")
 			}
 			break loop
 		case c := <-r:
@@ -76,7 +76,7 @@ loop:
 				cancel()
 				break loop
 			default:
-				slog.Error("Unexpected control request", "cmd", c.Cmd)
+				log.Error().Interface("cmd", c.Cmd).Msg("Unexpected control request")
 			}
 		}
 	}

@@ -3,9 +3,9 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 
+	"github.com/rs/zerolog"
 	"github.com/jjack/grubstation/internal/config"
 	"github.com/jjack/grubstation/internal/grub"
 	"github.com/jjack/grubstation/internal/homeassistant"
@@ -98,9 +98,7 @@ func NewCLI() *CLI {
 			}
 
 			if debugMode || os.Getenv("DEBUG") == "true" {
-				slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-					Level: slog.LevelDebug,
-				})))
+				zerolog.SetGlobalLevel(zerolog.DebugLevel)
 			}
 
 			if err := cli.LoadConfig(cmd, cfgFile); err != nil {

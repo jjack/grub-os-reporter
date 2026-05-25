@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +15,7 @@ import (
 	"github.com/jjack/grubstation/internal/grub"
 	"github.com/jjack/grubstation/internal/homeassistant"
 	"github.com/jjack/grubstation/internal/servicemanager"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/yarlson/tap"
@@ -221,7 +221,7 @@ func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, c
 }
 
 func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token string) error {
-	slog.Debug("Starting installation process", "config", cfgFile)
+	log.Debug().Interface("config", cfgFile).Msg("Starting installation process")
 	mgr, err := deps.Manager(cmd.Context())
 	if err != nil {
 		return err

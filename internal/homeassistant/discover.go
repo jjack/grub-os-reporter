@@ -3,11 +3,11 @@ package homeassistant
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/grandcat/zeroconf"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -27,7 +27,7 @@ func isSupportedURL(url string) bool {
 }
 
 func Discover(ctx context.Context) ([]ServiceInstance, error) {
-	slog.Debug("Starting Home Assistant discovery via zeroconf", "service", homeAssistantService, "domain", searchDomain)
+	log.Debug().Str("service", homeAssistantService).Str("domain", searchDomain).Msg("Starting Home Assistant discovery via zeroconf")
 
 	resolver, err := zeroconf.NewResolver(nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func Discover(ctx context.Context) ([]ServiceInstance, error) {
 		for entry := range entries {
 			urls := extractURLs(entry)
 			if len(urls) > 0 {
-				slog.Debug("Discovered Home Assistant instance", "instance", entry.Instance, "urls", urls)
+				log.Debug().Str("instance", entry.Instance).Strs("urls", urls).Msg("Discovered Home Assistant instance")
 				instances = append(instances, ServiceInstance{
 					Name: entry.Instance,
 					URLs: urls,
@@ -86,23 +86,23 @@ func extractURLs(e *zeroconf.ServiceEntry) []string {
 		}
 	}
 	if len(txtMap) > 0 {
-		slog.Debug("Parsed TXT records", "instance", e.Instance, "data", txtMap)
+		log.Debug().Str("instance", e.Instance).Interface("data", txtMap).Msg("Parsed TXT records")
 	}
 
 	// Try TXT records first
 	if url, ok := txtMap["internal_url"]; ok && isSupportedURL(url) {
-		slog.Debug("Found internal_url in TXT", "instance", e.Instance, "url", url)
+		log.Debug().Str("instance", e.Instance).Str("url", url).Msg("Found internal_url in TXT")
 		addURL(url)
 	}
 	if url, ok := txtMap["base_url"]; ok && isSupportedURL(url) {
-		slog.Debug("Found base_url in TXT", "instance", e.Instance, "url", url)
+		log.Debug().Str("instance", e.Instance).Str("url", url).Msg("Found base_url in TXT")
 		addURL(url)
 	}
 
 	// Fallback to IP:Port
 	for _, ip := range e.AddrIPv4 {
 		url := fmt.Sprintf("http://%s:%d", ip.String(), e.Port)
-		slog.Debug("Falling back to IP:Port URL", "instance", e.Instance, "url", url)
+		log.Debug().Str("instance", e.Instance).Str("url", url).Msg("Falling back to IP:Port URL")
 		addURL(url)
 	}
 

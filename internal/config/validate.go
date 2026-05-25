@@ -1,8 +1,8 @@
 package config
 
 import (
+	log "github.com/rs/zerolog/log"
 	"errors"
-	"log/slog"
 	"net"
 	"net/url"
 	"regexp"
@@ -112,7 +112,7 @@ func ValidatePort(v string) error {
 	}
 	port, err := strconv.Atoi(v)
 	if err != nil || port < 1 || port > 65535 {
-		slog.Error("Invalid WOL port", "port", port)
+		log.Error().Interface("port", port).Msg("Invalid WOL port")
 		return ErrInvalidWolBroadcastPort
 	}
 	return nil

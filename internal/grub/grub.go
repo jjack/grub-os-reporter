@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
 	"text/template"
 
 	"github.com/jjack/grubstation/internal/assets"
+	"github.com/rs/zerolog/log"
 )
 
 var ErrConfigNotFound = errors.New("no grub config found in known locations")
@@ -52,14 +52,14 @@ type SetupOptions struct {
 
 // GetBootOptions parses the GRUB configuration and returns available boot options.
 func (g *Grub) GetBootOptions(ctx context.Context) ([]string, error) {
-	slog.Debug("Parsing GRUB boot options...")
+	log.Debug().Msg("Parsing GRUB boot options...")
 
 	var grubPath string
 	var err error
 
 	if g.ConfigPath != "" {
 		grubPath = g.ConfigPath
-		slog.Debug("Using explicit GRUB config path", slog.String("path", grubPath))
+		log.Debug().Str("path", grubPath).Msg("Using explicit GRUB config path")
 	} else {
 		grubPath, err = findConfig()
 		if err != nil {
@@ -87,7 +87,7 @@ func (g *Grub) DiscoverConfigPath(ctx context.Context) (string, error) {
 func findConfig() (string, error) {
 	for _, path := range knownConfigPaths {
 		if _, err := os.Stat(path); err == nil {
-			slog.Debug("Found GRUB config at", "path", path)
+			log.Debug().Str("path", path).Msg("Found GRUB config")
 			return path, nil
 		}
 	}

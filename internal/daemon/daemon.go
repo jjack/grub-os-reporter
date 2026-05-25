@@ -6,11 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/jjack/grubstation/internal/grub"
 	"github.com/jjack/grubstation/internal/homeassistant"
@@ -91,12 +92,12 @@ func (d *Daemon) TriggerUpdate(ctx context.Context) error {
 		}
 	}
 
-	slog.Debug("Triggering boot options update to Home Assistant")
+	log.Debug().Msg("Triggering boot options update to Home Assistant")
 	if err := d.HAClient.UpdateBootOptions(ctx, d.Config.MACAddress, d.Config.HostAddress, bootOptions, d.Config.WolBroadcastAddress, d.Config.WolBroadcastPort); err != nil {
 		return fmt.Errorf("update failed: %w", err)
 	}
 
-	slog.Debug("Update successful")
+	log.Debug().Msg("Update successful")
 	return nil
 }
 
@@ -117,13 +118,13 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	srv := d.newHTTPServer(token)
 	go func() {
-		slog.Info("Starting HTTP listener", "port", d.Config.Port)
+		log.Info().Interface("port", d.Config.Port).Msg("Starting HTTP listener")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("HTTP server failed", "error", err)
+			log.Error().Err(err).Msg("HTTP server failed")
 		}
 	}()
 
-	slog.Info("Daemon is running and waiting for termination")
+	log.Info().Msg("Daemon is running and waiting for termination")
 
 	// 3. Wait for context cancellation and cleanup
 	<-ctx.Done()
@@ -137,10 +138,10 @@ func (d *Daemon) ensureToken() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to generate dynamic token: %w", err)
 		}
-		slog.Info("Using dynamically generated TOFU token")
+		log.Info().Msg("Using dynamically generated TOFU token")
 		return generated, nil
 	}
-	slog.Info("Using configured API key")
+	log.Info().Msg("Using configured API key")
 	return token, nil
 }
 
@@ -155,10 +156,10 @@ func (d *Daemon) performInitialHandshake(ctx context.Context, token string) erro
 	}
 	maxBackoff := 5 * time.Minute
 
-	slog.Info("Starting initial registration with Home Assistant")
+	log.Info().Msg("Starting initial registration with Home Assistant")
 	for {
 		if err := d.HAClient.RegisterAgent(ctx, d.Config.MACAddress, d.Config.HostAddress, token, d.Config.Port); err != nil {
-			slog.Warn("Initial registration failed, retrying...", "error", err, "retry_in", backoff)
+			log.Warn().Err(err).Interface("retry_in", backoff).Msg("Initial registration failed, retrying...")
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -170,14 +171,14 @@ func (d *Daemon) performInitialHandshake(ctx context.Context, token string) erro
 			}
 			continue
 		}
-		slog.Info("Initial registration successful")
+		log.Info().Msg("Initial registration successful")
 		break
 	}
 
 	if err := d.TriggerUpdate(ctx); err != nil {
-		slog.Error("Initial update failed", "error", err)
+		log.Error().Msg("Initial update failed")
 	} else {
-		slog.Info("Initial update successful")
+		log.Info().Msg("Initial update successful")
 	}
 
 	return nil
@@ -201,18 +202,18 @@ func (d *Daemon) newHTTPServer(token string) *http.Server {
 	mux.HandleFunc("POST /shutdown", func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		if auth != "Bearer "+token {
-			slog.Warn("Unauthorized shutdown request", "remote_addr", r.RemoteAddr)
+			log.Warn().Interface("remote_addr", r.RemoteAddr).Msg("Unauthorized shutdown request")
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			_ = json.NewEncoder(w).Encode(map[string]string{"status": "error", "error": "Forbidden"})
 			return
 		}
 
-		slog.Info("Shutdown requested via HTTP")
+		log.Info().Msg("Shutdown requested via HTTP")
 
 		// Perform pre-shutdown push (synchronous)
 		if err := d.TriggerUpdate(r.Context()); err != nil {
-			slog.Error("Pre-shutdown push failed", "error", err)
+			log.Error().Err(err).Msg("Pre-shutdown push failed")
 		}
 
 		if err := d.performOSShutdown(); err != nil {
@@ -236,14 +237,14 @@ func (d *Daemon) newHTTPServer(token string) *http.Server {
 }
 
 func (d *Daemon) cleanup(srv *http.Server) error {
-	slog.Info("Shutting down daemon...")
+	log.Info().Msg("Shutting down daemon...")
 
 	if runtime.GOOS == "linux" {
-		slog.Info("Performing final GRUB report push")
+		log.Info().Msg("Performing final GRUB report push")
 		pushCtx, pushCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer pushCancel()
 		if err := d.TriggerUpdate(pushCtx); err != nil {
-			slog.Error("Final push failed", "error", err)
+			log.Error().Err(err).Msg("Final push failed")
 		}
 	}
 

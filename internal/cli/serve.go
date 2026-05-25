@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"log/slog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/jjack/grubstation/internal/config"
 	"github.com/jjack/grubstation/internal/daemon"
@@ -43,9 +43,9 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 					WaitTimeSeconds: waitTime,
 				})
 				if err == nil && drift {
-					slog.Warn("GRUB configuration drift detected. Your installed GRUB script does not match the current config. Run 'grubstation setup --apply' to sync.")
+					log.Warn().Msg("GRUB configuration drift detected. Your installed GRUB script does not match the current config. Run 'grubstation setup --apply' to sync.")
 				} else if err != nil {
-					slog.Debug("Failed to check for GRUB drift", "error", err)
+					log.Debug().Err(err).Msg("Failed to check for GRUB drift")
 				}
 			}
 

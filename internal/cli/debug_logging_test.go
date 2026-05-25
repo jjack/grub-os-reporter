@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 func TestMemHandler(t *testing.T) {
@@ -141,7 +143,7 @@ func TestSetupDebugLogging(t *testing.T) {
 		// but since we want to avoid hangs, we'll just not capture it and trust the return.
 
 		dump := setupDebugLogging()
-		slog.Info("test log message")
+		log.Info().Msg("test log message")
 
 		// Create a temp file to capture stderr if we really want to, but let's try WITHOUT it first
 		// to see if the hang was indeed os.Pipe

@@ -3,7 +3,6 @@ package wizard
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jjack/grubstation/internal/config"
+	"github.com/rs/zerolog/log"
 	"github.com/yarlson/tap"
 )
 
@@ -126,14 +126,14 @@ func ValidatePort(s string, isReinstall bool, currentPort int, portChecker func(
 
 // CheckPortAvailability is the default implementation of the port checker.
 func CheckPortAvailability(port int) error {
-	slog.Debug("Checking port availability", "port", port)
+	log.Debug().Interface("port", port).Msg("Checking port availability")
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		slog.Debug("Port availability check failed", "port", port, "error", err)
+		log.Debug().Interface("port", port).Err(err).Msg("Port availability check failed")
 		return fmt.Errorf("port %d is in use or unavailable: %v", port, err)
 	}
 	_ = listener.Close()
-	slog.Debug("Port is available", "port", port)
+	log.Debug().Interface("port", port).Msg("Port is available")
 	return nil
 }
 
@@ -144,7 +144,7 @@ func ValidateHAURL(ctx context.Context, s string, skipCheck bool, urlChecker fun
 	}
 
 	if skipCheck {
-		slog.Debug("Skipping Home Assistant URL connection check as requested")
+		log.Debug().Msg("Skipping Home Assistant URL connection check as requested")
 		return nil
 	}
 
@@ -153,23 +153,23 @@ func ValidateHAURL(ctx context.Context, s string, skipCheck bool, urlChecker fun
 
 // CheckHAConnection is the default implementation of the HA URL connection checker.
 func CheckHAConnection(ctx context.Context, url string) error {
-	slog.Debug("Checking Home Assistant connection", "url", url)
+	log.Debug().Interface("url", url).Msg("Checking Home Assistant connection")
 	client := &http.Client{
 		Timeout: 3 * time.Second,
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		slog.Debug("Failed to create request for HA connection check", "url", url, "error", err)
+		log.Debug().Interface("url", url).Err(err).Msg("Failed to create request for HA connection check")
 		return fmt.Errorf("invalid request: %v", err)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Debug("Home Assistant connection check failed", "url", url, "error", err)
+		log.Debug().Interface("url", url).Err(err).Msg("Home Assistant connection check failed")
 		return fmt.Errorf("could not connect to HA URL: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	slog.Debug("Home Assistant connection check successful", "url", url, "status", resp.StatusCode)
+	log.Debug().Interface("url", url).Interface("status", resp.StatusCode).Msg("Home Assistant connection check successful")
 	return nil
 }

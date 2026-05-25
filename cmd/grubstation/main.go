@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log/slog"
+	"github.com/rs/zerolog/log"
 	"os"
 
 	"github.com/jjack/grubstation/internal/cli"
@@ -10,7 +10,7 @@ import (
 func main() {
 	app := cli.NewCLI()
 	if err := app.Execute(); err != nil {
-		slog.Error("Error executing command", "error", err)
+		log.Error().Err(err).Msg("Error executing command")
 		os.Exit(1)
 	}
 }

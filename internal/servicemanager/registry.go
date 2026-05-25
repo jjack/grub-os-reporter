@@ -2,8 +2,9 @@ package servicemanager
 
 import (
 	"context"
-	"log/slog"
 	"sort"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Factory func() Manager
@@ -39,7 +40,7 @@ func (r *Registry) Detect(ctx context.Context) (Manager, error) {
 	for _, name := range names {
 		mgr := r.services[name]()
 		if mgr.IsActive(ctx) {
-			slog.Debug("Detected service manager", "name", name)
+			log.Debug().Str("name", name).Msg("Detected service manager")
 			return mgr, nil
 		}
 	}

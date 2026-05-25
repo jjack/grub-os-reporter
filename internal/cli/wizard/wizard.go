@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/jjack/grubstation/internal/config"
 	"github.com/jjack/grubstation/internal/homeassistant"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/yarlson/tap"
 )
@@ -115,12 +115,12 @@ type haDiscoveryResult struct {
 func startHADiscovery(ctx context.Context, discoverHA func(context.Context) ([]homeassistant.ServiceInstance, error)) <-chan haDiscoveryResult {
 	haChan := make(chan haDiscoveryResult, 1)
 	go func() {
-		slog.Debug("Starting background Home Assistant discovery")
+		log.Debug().Msg("Starting background Home Assistant discovery")
 		instances, err := discoverHA(ctx)
 		if err != nil {
-			slog.Debug("Background HA discovery failed", "error", err)
+			log.Debug().Err(err).Msg("Background HA discovery failed")
 		} else {
-			slog.Debug("Background HA discovery complete", "count", len(instances))
+			log.Debug().Interface("count", len(instances)).Msg("Background HA discovery complete")
 		}
 		haChan <- haDiscoveryResult{instances, err}
 	}()
@@ -134,9 +134,9 @@ type fqdnResolutionResult struct {
 func startFQDNResolution(ctx context.Context, hostname string, getFQDN func(string, *net.Interface) string) <-chan fqdnResolutionResult {
 	globalInfoChan := make(chan fqdnResolutionResult, 1)
 	go func() {
-		slog.Debug("Starting background global FQDN resolution", "hostname", hostname)
+		log.Debug().Interface("hostname", hostname).Msg("Starting background global FQDN resolution")
 		fqdn := getFQDN(hostname, nil)
-		slog.Debug("Background global FQDN resolution complete", "fqdn", fqdn)
+		log.Debug().Interface("fqdn", fqdn).Msg("Background global FQDN resolution complete")
 		globalInfoChan <- fqdnResolutionResult{fqdn}
 	}()
 	return globalInfoChan
@@ -150,7 +150,7 @@ func stepSelectInstallationMode(ctx context.Context, grubConfigPath string) (str
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	slog.Debug("Selected installation mode", "mode", mode)
+	log.Debug().Interface("mode", mode).Msg("Selected installation mode")
 	return mode, nil
 }
 
@@ -163,7 +163,7 @@ func stepSelectNetworkInterface(ctx context.Context, interfaces []net.Interface,
 		return net.Interface{}, ctx.Err()
 	}
 	selectedIface := interfaces[ifaceIdx]
-	slog.Debug("Selected network interface", "interface", selectedIface.Name, "mac", selectedIface.HardwareAddr.String())
+	log.Debug().Interface("interface", selectedIface.Name).Interface("mac", selectedIface.HardwareAddr.String()).Msg("Selected network interface")
 	return selectedIface, nil
 }
 
@@ -172,7 +172,7 @@ func stepSelectHostAddress(ctx context.Context, hostname string, iface net.Inter
 
 	// Local FQDN resolution (fast)
 	localFQDN := getFQDN(hostname, &iface)
-	slog.Debug("Local FQDN resolution result", "fqdn", localFQDN)
+	log.Debug().Interface("fqdn", localFQDN).Msg("Local FQDN resolution result")
 
 	// Global FQDN resolution (wait if needed)
 	var globalFQDN string
@@ -186,7 +186,7 @@ func stepSelectHostAddress(ctx context.Context, hostname string, iface net.Inter
 		s.Stop("Network information resolved", 0)
 		globalFQDN = res.fqdn
 	}
-	slog.Debug("Global FQDN resolution result", "fqdn", globalFQDN)
+	log.Debug().Interface("fqdn", globalFQDN).Msg("Global FQDN resolution result")
 
 	hostAddress := tap.Select(ctx, tap.SelectOptions[string]{
 		Message: "Host Address (Used for communication with the daemon)",
@@ -195,7 +195,7 @@ func stepSelectHostAddress(ctx context.Context, hostname string, iface net.Inter
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	slog.Debug("Selected host address", "address", hostAddress)
+	log.Debug().Interface("address", hostAddress).Msg("Selected host address")
 	return hostAddress, nil
 }
 
@@ -224,7 +224,7 @@ func stepSelectDaemonPort(ctx context.Context, state SystemState, runsDaemon boo
 		return 0, ctx.Err()
 	}
 	port, _ := strconv.Atoi(portStr)
-	slog.Debug("Selected daemon port", "port", port)
+	log.Debug().Interface("port", port).Msg("Selected daemon port")
 	return port, nil
 }
 
@@ -237,7 +237,7 @@ func stepSelectWOLAddress(ctx context.Context, iface net.Interface, getIPInfo fu
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	slog.Debug("Selected WOL broadcast address", "address", wolBroadcastAddress)
+	log.Debug().Interface("address", wolBroadcastAddress).Msg("Selected WOL broadcast address")
 	return wolBroadcastAddress, nil
 }
 
@@ -259,7 +259,7 @@ func stepSelectGRUBWaitTime(ctx context.Context, grubConfigPath string, reportsB
 		return 0, "", ctx.Err()
 	}
 	grubWaitTime, _ := strconv.Atoi(waitStr)
-	slog.Debug("Selected GRUB wait time", "seconds", grubWaitTime)
+	log.Debug().Interface("seconds", grubWaitTime).Msg("Selected GRUB wait time")
 	return grubWaitTime, grubConfigPath, nil
 }
 
@@ -286,7 +286,7 @@ func stepSelectHomeAssistantURL(ctx context.Context, haChan <-chan haDiscoveryRe
 
 	if totalURLs == 1 {
 		haURL = discovered[0].URLs[0]
-		slog.Debug("Single Home Assistant instance discovered, using it", "url", haURL)
+		log.Debug().Interface("url", haURL).Msg("Single Home Assistant instance discovered, using it")
 	} else if len(discovered) > 0 {
 		instIdx, err := selectHAInstance(ctx, discovered)
 		if err != nil {
@@ -295,7 +295,7 @@ func stepSelectHomeAssistantURL(ctx context.Context, haChan <-chan haDiscoveryRe
 
 		if instIdx != -1 {
 			selectedInst := discovered[instIdx]
-			slog.Debug("Selected Home Assistant instance", "name", selectedInst.Name)
+			log.Debug().Interface("name", selectedInst.Name).Msg("Selected Home Assistant instance")
 
 			var err error
 			haURL, err = selectHAURLForAgent(ctx, selectedInst)
@@ -358,7 +358,7 @@ func selectHAURLForAgent(ctx context.Context, inst homeassistant.ServiceInstance
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	slog.Debug("Selected Home Assistant URL", "url", url)
+	log.Debug().Interface("url", url).Msg("Selected Home Assistant URL")
 	return url, nil
 }
 
@@ -378,7 +378,7 @@ func selectHAURLForGRUB(ctx context.Context, inst homeassistant.ServiceInstance)
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		slog.Debug("Selected GRUB HTTP URL", "url", url)
+		log.Debug().Interface("url", url).Msg("Selected GRUB HTTP URL")
 		return url, nil
 	}
 	return "", nil
@@ -395,7 +395,7 @@ func enterHAURLManually(ctx context.Context) (string, error) {
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	slog.Debug("Manually entered Home Assistant URL", "url", haURL)
+	log.Debug().Interface("url", haURL).Msg("Manually entered Home Assistant URL")
 	return haURL, nil
 }
 
@@ -409,7 +409,7 @@ func stepGetWebhookID(ctx context.Context) (string, error) {
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
-	slog.Debug("Home Assistant Webhook ID provided and validated")
+	log.Debug().Msg("Home Assistant Webhook ID provided and validated")
 	return haWebhook, nil
 }
 
