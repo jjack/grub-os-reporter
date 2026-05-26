@@ -17,11 +17,11 @@ var (
 
 // Host handles system information discovery.
 type Host struct {
-	OsHostname           func() (string, error)
-	NetInterfaces        func() ([]net.Interface, error)
-	NetLookupCNAME       func(name string) (string, error)
-	GetAddrs             func(iface net.Interface) ([]net.Addr, error)
-	OsStat               func(name string) (os.FileInfo, error)
+	OsHostname          func() (string, error)
+	NetInterfaces       func() ([]net.Interface, error)
+	NetLookupCNAME      func(name string) (string, error)
+	GetAddrs            func(iface net.Interface) ([]net.Addr, error)
+	OsStat              func(name string) (os.FileInfo, error)
 	getAdapterDNSSuffix func(ifIndex uint32) string
 }
 

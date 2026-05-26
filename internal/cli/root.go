@@ -5,9 +5,6 @@ import (
 	"os"
 
 	"github.com/jjack/grubstation/internal/config"
-	"github.com/jjack/grubstation/internal/grub"
-	"github.com/jjack/grubstation/internal/homeassistant"
-	"github.com/jjack/grubstation/internal/host"
 	"github.com/jjack/grubstation/internal/servicemanager"
 	"github.com/jjack/grubstation/internal/version"
 	"github.com/rs/zerolog"
@@ -19,18 +16,15 @@ type CLI struct {
 	RootCmd *cobra.Command
 }
 
-type CommandDeps struct {
-	Config     *config.Config
-	ConfigFile string
-	Grub       *grub.Grub
-	Registry   *servicemanager.Registry
-	Host       *host.Host
-	SaveConfig func(*config.Config, string) error
-	DiscoverHA func() ([]homeassistant.ServiceInstance, error)
-}
+var (
+	GlobalConfig     *config.Config
+	GlobalConfigFile string
+)
 
-func (cd *CommandDeps) Manager() (servicemanager.Manager, error) {
-	mgr, err := cd.Registry.Detect()
+func GetManager() (servicemanager.Manager, error) {
+	registry := servicemanager.NewRegistry()
+	servicemanager.RegisterDefaultServices(registry)
+	mgr, err := registry.Detect()
 	if err != nil {
 		return nil, fmt.Errorf("manager detection failed: %w", err)
 	}
@@ -81,15 +75,6 @@ func (cli *CLI) LoadConfig(cmd *cobra.Command, cfgFile string) (string, error) {
 func NewCLI() *CLI {
 	cli := &CLI{}
 
-	deps := &CommandDeps{
-		Config:     &config.Config{},
-		Grub:       grub.NewGrub(),
-		Registry:   servicemanager.NewRegistry(),
-		Host:       host.New(),
-		SaveConfig: config.Save,
-		DiscoverHA: homeassistant.Discover,
-	}
-
 	var cfgFile string
 	var debugMode bool
 
@@ -110,8 +95,8 @@ func NewCLI() *CLI {
 				return err
 			}
 
-			deps.Config = cli.Config
-			deps.ConfigFile = resolved
+			GlobalConfig = cli.Config
+			GlobalConfigFile = resolved
 			return nil
 		},
 	}
@@ -127,11 +112,11 @@ func NewCLI() *CLI {
 	rootCmd.PersistentFlags().String(config.FlagHassWebhook, "", "Home Assistant Webhook ID override")
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
 
-	rootCmd.AddCommand(NewBootCmd(deps))
-	rootCmd.AddCommand(NewConfigCmd(deps))
-	rootCmd.AddCommand(NewServeCmd(deps))
-	rootCmd.AddCommand(NewServiceCmd(deps))
-	rootCmd.AddCommand(NewSetupCmd(deps))
+	rootCmd.AddCommand(NewBootCmd())
+	rootCmd.AddCommand(NewConfigCmd())
+	rootCmd.AddCommand(NewServeCmd())
+	rootCmd.AddCommand(NewServiceCmd())
+	rootCmd.AddCommand(NewSetupCmd())
 	rootCmd.AddCommand(NewVersionCmd())
 
 	// get rid of the completion command because it doesn't make sense here

@@ -52,7 +52,7 @@ func TestRegistry(t *testing.T) {
 
 		r2 := NewRegistry()
 		r2.Register("service2", func() Manager { return &mockMgr{name: "service2", active: false} })
-		m, err = r2.Detect()
+		_, err = r2.Detect()
 		if err != ErrNotSupported {
 			t.Errorf("expected ErrNotSupported, got %v", err)
 		}

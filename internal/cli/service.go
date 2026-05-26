@@ -9,32 +9,33 @@ import (
 	"time"
 
 	"github.com/jjack/grubstation/internal/config"
+	"github.com/jjack/grubstation/internal/grub"
 	"github.com/spf13/cobra"
 )
 
-func NewServiceCmd(deps *CommandDeps) *cobra.Command {
+func NewServiceCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "service",
 		Short: "Manage the GrubStation background service",
 	}
 
-	cmd.AddCommand(NewServiceInstallCmd(deps))
-	cmd.AddCommand(NewServiceRemoveCmd(deps))
-	cmd.AddCommand(NewServiceStartCmd(deps))
-	cmd.AddCommand(NewServiceStopCmd(deps))
-	cmd.AddCommand(NewServiceStatusCmd(deps))
+	cmd.AddCommand(NewServiceInstallCmd())
+	cmd.AddCommand(NewServiceRemoveCmd())
+	cmd.AddCommand(NewServiceStartCmd())
+	cmd.AddCommand(NewServiceStopCmd())
+	cmd.AddCommand(NewServiceStatusCmd())
 
 	return cmd
 }
 
-func NewServiceInstallCmd(deps *CommandDeps) *cobra.Command {
+func NewServiceInstallCmd() *cobra.Command {
 	var configPath string
 
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Install the agent as a system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager()
+			mgr, err := GetManager()
 			if err != nil {
 				return err
 			}
@@ -58,14 +59,14 @@ func NewServiceInstallCmd(deps *CommandDeps) *cobra.Command {
 	return cmd
 }
 
-func NewServiceRemoveCmd(deps *CommandDeps) *cobra.Command {
+func NewServiceRemoveCmd() *cobra.Command {
 	var purge bool
 
 	cmd := &cobra.Command{
 		Use:   "remove",
 		Short: "Uninstall the grubstation service and GRUB hooks",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager()
+			mgr, err := GetManager()
 			if err != nil {
 				return err
 			}
@@ -75,15 +76,17 @@ func NewServiceRemoveCmd(deps *CommandDeps) *cobra.Command {
 				return fmt.Errorf("failed to remove manager: %w", err)
 			}
 
-			if deps.Config.Daemon.ReportBootOptions {
+			if GlobalConfig.Daemon.ReportBootOptions {
 				cmd.Printf("Removing GRUB hooks...\n")
-				if err := deps.Grub.Uninstall(); err != nil {
+				g := grub.NewGrub()
+				g.HassGrubStationPath = GlobalConfig.Grub.Path
+				if err := g.Uninstall(); err != nil {
 					return fmt.Errorf("failed to uninstall grub: %w", err)
 				}
 			}
 
 			if purge {
-				cfgDir := filepath.Dir(deps.ConfigFile)
+				cfgDir := filepath.Dir(GlobalConfigFile)
 				cmd.Printf("Purging configuration: %s\n", cfgDir)
 				if err := os.RemoveAll(cfgDir); err != nil {
 					return fmt.Errorf("failed to purge configuration: %w", err)
@@ -100,12 +103,12 @@ func NewServiceRemoveCmd(deps *CommandDeps) *cobra.Command {
 	return cmd
 }
 
-func NewServiceStartCmd(deps *CommandDeps) *cobra.Command {
+func NewServiceStartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start the system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager()
+			mgr, err := GetManager()
 			if err != nil {
 				return err
 			}
@@ -114,12 +117,12 @@ func NewServiceStartCmd(deps *CommandDeps) *cobra.Command {
 	}
 }
 
-func NewServiceStopCmd(deps *CommandDeps) *cobra.Command {
+func NewServiceStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager()
+			mgr, err := GetManager()
 			if err != nil {
 				return err
 			}
@@ -128,12 +131,12 @@ func NewServiceStopCmd(deps *CommandDeps) *cobra.Command {
 	}
 }
 
-func NewServiceStatusCmd(deps *CommandDeps) *cobra.Command {
+func NewServiceStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Check the service status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager()
+			mgr, err := GetManager()
 			if err != nil {
 				return err
 			}
@@ -149,7 +152,7 @@ func NewServiceStatusCmd(deps *CommandDeps) *cobra.Command {
 
 			// Try to check local daemon status if running
 			client := &http.Client{Timeout: 1 * time.Second}
-			resp, err := client.Get(fmt.Sprintf("http://localhost:%d/status", deps.Config.Daemon.Port))
+			resp, err := client.Get(fmt.Sprintf("http://localhost:%d/status", GlobalConfig.Daemon.Port))
 			if err == nil {
 				defer func() { _ = resp.Body.Close() }()
 				body, _ := io.ReadAll(resp.Body)

@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewBootCmd(deps *CommandDeps) *cobra.Command {
+func NewBootCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "boot",
 		Short: "Manage boot options (Not supported on this OS)",

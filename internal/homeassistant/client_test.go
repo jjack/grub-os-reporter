@@ -2,6 +2,7 @@ package homeassistant
 
 import (
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,50 @@ import (
 
 	"github.com/jjack/grubstation/internal/config"
 )
+
+func TestClient_Push(t *testing.T) {
+	var receivedPayload UpdatePayload
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "api/webhook/test-webhook") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST method, got %s", r.Method)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+
+		if err := json.Unmarshal(body, &receivedPayload); err != nil {
+			t.Fatalf("failed to unmarshal body: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	}))
+	defer ts.Close()
+
+	client := NewClient(ts.URL, "test-webhook", nil)
+	payload := UpdatePayload{
+		Action:      ActionUpdateAction,
+		MACAddress:  "aa:bb:cc:dd",
+		BootOptions: []string{"Ubuntu"},
+	}
+
+	err := client.PostWebhook(payload)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if receivedPayload.Action != ActionUpdateAction {
+		t.Errorf("expected action %s, got %s", ActionUpdateAction, receivedPayload.Action)
+	}
+	if receivedPayload.MACAddress != "aa:bb:cc:dd" {
+		t.Errorf("expected MAC aa:bb:cc:dd, got %s", receivedPayload.MACAddress)
+	}
+}
 
 func TestClient_UpdateBootOptions(t *testing.T) {
 	var receivedPayload UpdatePayload

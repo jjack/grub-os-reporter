@@ -16,8 +16,7 @@ func TestConfigInitCmd(t *testing.T) {
 	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	outputFile := filepath.Join(tempDir, "config.yaml")
-	deps := &CommandDeps{}
-	cmd := NewConfigInitCmd(deps)
+	cmd := NewConfigInitCmd()
 
 	var out bytes.Buffer
 	cmd.SetOut(&out)

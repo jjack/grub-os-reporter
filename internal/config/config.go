@@ -77,7 +77,7 @@ func LoadConfig(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var cfg Config
 	decoder := yaml.NewDecoder(f)
@@ -103,7 +103,7 @@ func Save(cfg *Config, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	encoder := yaml.NewEncoder(f)
 	encoder.SetIndent(2)
@@ -118,7 +118,7 @@ func SaveExhaustive(cfg *Config, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	encoder := yaml.NewEncoder(f)
 	encoder.SetIndent(2)

@@ -3,15 +3,18 @@
 package cli
 
 import (
+	"github.com/jjack/grubstation/internal/grub"
 	"github.com/spf13/cobra"
 )
 
-func NewBootListCmd(deps *CommandDeps) *cobra.Command {
+func NewBootListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List available boot options from GRUB",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			options, err := deps.Grub.GetBootOptions()
+			g := grub.NewGrub()
+			g.ConfigPath = GlobalConfig.Grub.Path
+			options, err := g.GetBootOptions()
 			if err != nil {
 				return err
 			}

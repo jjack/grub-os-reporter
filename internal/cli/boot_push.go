@@ -6,28 +6,31 @@ import (
 	"fmt"
 
 	"github.com/jjack/grubstation/internal/config"
+	"github.com/jjack/grubstation/internal/grub"
 	"github.com/jjack/grubstation/internal/homeassistant"
 	"github.com/spf13/cobra"
 )
 
-func NewBootPushCmd(deps *CommandDeps) *cobra.Command {
+func NewBootPushCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "push",
 		Short: "Push the list of available OSes to Home Assistant",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load state for HA credentials
-			state, _ := config.LoadState(deps.ConfigFile)
+			state, _ := config.LoadState(GlobalConfigFile)
 			if state.HADaemonURL == "" || state.WebhookID == "" {
 				return fmt.Errorf("homeassistant url and webhook_id must be configured")
 			}
 
-			options, err := deps.Grub.GetBootOptions()
+			g := grub.NewGrub()
+			g.ConfigPath = GlobalConfig.Grub.Path
+			options, err := g.GetBootOptions()
 			if err != nil {
 				return err
 			}
 
 			client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
-			if err := client.UpdateBootOptions(deps.Config, state, options); err != nil {
+			if err := client.UpdateBootOptions(GlobalConfig, state, options); err != nil {
 				return err
 			}
 

@@ -6,14 +6,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewBootCmd(deps *CommandDeps) *cobra.Command {
+func NewBootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "boot",
 		Short: "Manage boot options",
 	}
 
-	cmd.AddCommand(NewBootListCmd(deps))
-	cmd.AddCommand(NewBootPushCmd(deps))
+	cmd.AddCommand(NewBootListCmd())
+	cmd.AddCommand(NewBootPushCmd())
 
 	return cmd
 }

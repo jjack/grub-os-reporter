@@ -8,12 +8,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewConfigInitCmd(deps *CommandDeps) *cobra.Command {
+func NewConfigInitCmd() *cobra.Command {
 	var output string
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Generate a default config.yaml in the current directory",
+		Short: "Initialize a default configuration file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if _, err := os.Stat(output); err == nil {
 				return fmt.Errorf("config file already exists: %s", output)
@@ -41,7 +41,7 @@ func NewConfigInitCmd(deps *CommandDeps) *cobra.Command {
 			}
 
 			if err := config.SaveExhaustive(cfg, output); err != nil {
-				return fmt.Errorf("failed to save config: %w", err)
+				return err
 			}
 
 			cmd.Printf("Default configuration generated at: %s\n", output)

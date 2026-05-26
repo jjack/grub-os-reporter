@@ -131,7 +131,7 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		haClient := homeassistant.NewClient(s.State.HADaemonURL, s.State.WebhookID, nil)
 
-		// 2. Push initial boot options if enabled
+		// 1. Push initial boot options if enabled
 		if s.Config.Daemon.ReportBootOptions {
 			options, _ := s.Grub.GetBootOptions()
 			if err := haClient.UpdateBootOptions(s.Config, s.State, options); err != nil {
@@ -139,7 +139,7 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// 3. Apply GRUB config if requested
+		// 2. Apply GRUB config if requested
 		if req.ApplyConfig && runtime.GOOS == "linux" {
 			log.Info().Msg("Applying GRUB configuration as requested by pairing")
 			err := s.Grub.Setup(grub.SetupOptions{
@@ -153,7 +153,7 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// 4. Update mDNS status
+		// 3. Update mDNS status
 		if s.MDNSUpdater != nil {
 			if err := s.MDNSUpdater.UpdatePaired(true); err != nil {
 				log.Error().Err(err).Msg("Failed to update mDNS status after pairing")
