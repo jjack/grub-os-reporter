@@ -5,66 +5,75 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 
 	"github.com/jjack/grubstation/internal/config"
+	"github.com/jjack/grubstation/internal/grub"
 	"github.com/rs/zerolog/log"
 	"github.com/yarlson/tap"
 	"gopkg.in/yaml.v3"
 )
 
-type SystemState struct {
-	Hostname       string
-	Interfaces     []net.Interface
-	GrubConfigPath string
-	IsReinstall    bool
-	CurrentPort    int
-}
-
 var (
-	RunGenerateSurvey func(SystemState, bool, func(net.Interface) ([]string, map[string]string), func(string, *net.Interface) string) (*config.Config, error) = generateConfigInteractive
+	RunGenerateSurvey func(isReinstall bool, currentPort int, isDryRun bool, getIPInfo func(net.Interface) ([]string, map[string]string)) (*config.Config, error) = generateConfigInteractive
 
 	ErrAborted = errors.New("setup aborted")
 )
 
-func generateConfigInteractive(state SystemState, isDryRun bool, getIPInfo func(net.Interface) ([]string, map[string]string), getFQDN func(string, *net.Interface) string) (*config.Config, error) {
-	if err := stepConfirmOverwrite(state.IsReinstall, isDryRun); err != nil {
+func generateConfigInteractive(isReinstall bool, currentPort int, isDryRun bool, getIPInfo func(net.Interface) ([]string, map[string]string)) (*config.Config, error) {
+	// 0. Preflight check
+	if err := stepConfirmOverwrite(isReinstall, isDryRun); err != nil {
 		return nil, err
 	}
 
-	// 1. Boot Reporting (only if GRUB is present)
+	// 1. Detect GRUB and prompt for boot reporting
+	g := grub.NewGrub()
+	grubConfigPath, _ := g.DiscoverConfigPath()
 	var reportsBoot bool
-	if state.GrubConfigPath != "" {
-		reportsBoot = stepPromptReportBootOptions(state.GrubConfigPath)
+	if grubConfigPath != "" {
+		reportsBoot = stepPromptReportBootOptions(grubConfigPath)
 	}
-	runsDaemon := true // Always daemon
 
 	// 2. Network Interface
-	selectedIface, err := stepSelectNetworkInterface(state.Interfaces, getIPInfo)
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list network interfaces: %w", err)
+	}
+	// Filter interfaces (up, not loopback, has MAC)
+	var filtered []net.Interface
+	for _, inf := range interfaces {
+		if inf.Flags&net.FlagUp != 0 && inf.Flags&net.FlagLoopback == 0 && len(inf.HardwareAddr) > 0 {
+			filtered = append(filtered, inf)
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("no suitable network interfaces found")
+	}
+
+	selectedIface, err := stepSelectNetworkInterface(filtered, getIPInfo)
 	if err != nil {
 		return nil, err
 	}
 
 	// 3. Daemon Port
-	agentPort, err := stepSelectDaemonPort(state, runsDaemon)
+	agentPort, err := stepSelectDaemonPort(isReinstall, currentPort)
 	if err != nil {
 		return nil, err
 	}
 
 	// 4. WOL Address
-	wolBroadcastAddress, err := stepSelectWOLAddress(selectedIface, getIPInfo)
-	if err != nil {
-		return nil, err
-	}
+	wolBroadcastAddress := stepSelectWOLAddress(selectedIface, getIPInfo)
 
 	// 5. GRUB Wait Time
-	grubWaitTime, finalGrubConfigPath, err := stepSelectGRUBWaitTime(state.GrubConfigPath, reportsBoot)
-	if err != nil {
-		return nil, err
+	var grubWaitTime int
+	if reportsBoot {
+		grubWaitTime, err = stepSelectGRUBWaitTime()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	cfg := AssembleConfig(selectedIface.Name, selectedIface.HardwareAddr.String(), wolBroadcastAddress, agentPort, reportsBoot, grubWaitTime, finalGrubConfigPath)
+	cfg := AssembleConfig(selectedIface.Name, agentPort, wolBroadcastAddress, reportsBoot, grubWaitTime, grubConfigPath)
 	return cfg, nil
 }
 
@@ -83,7 +92,7 @@ func stepConfirmOverwrite(isReinstall, isDryRun bool) error {
 
 func stepPromptReportBootOptions(grubPath string) bool {
 	reportsBoot := tap.Confirm(context.Background(), tap.ConfirmOptions{
-		Message:      "Enable remote boot selection (report GRUB options to Home Assistant)?",
+		Message:      fmt.Sprintf("Enable remote boot selection? (Detected GRUB at %s)", grubPath),
 		InitialValue: true,
 	})
 	log.Debug().Interface("reportsBoot", reportsBoot).Msg("User selected boot reporting preference")
@@ -92,7 +101,7 @@ func stepPromptReportBootOptions(grubPath string) bool {
 
 func stepSelectNetworkInterface(interfaces []net.Interface, getIPInfo func(net.Interface) ([]string, map[string]string)) (net.Interface, error) {
 	ifaceIdx := tap.Select(context.Background(), tap.SelectOptions[int]{
-		Message: "Available Network Interface",
+		Message: "Select network interface to use",
 		Options: BuildIfaceOptions(interfaces, getIPInfo),
 	})
 	selectedIface := interfaces[ifaceIdx]
@@ -100,25 +109,27 @@ func stepSelectNetworkInterface(interfaces []net.Interface, getIPInfo func(net.I
 	return selectedIface, nil
 }
 
-func stepSelectDaemonPort(state SystemState, runsDaemon bool) (int, error) {
-	if !runsDaemon {
-		return 0, nil
-	}
-
+func stepSelectDaemonPort(isReinstall bool, currentPort int) (int, error) {
 	defaultValue := strconv.Itoa(config.DefaultAgentPort)
-	if state.CurrentPort > 0 {
-		defaultValue = strconv.Itoa(state.CurrentPort)
+	if currentPort > 0 {
+		defaultValue = strconv.Itoa(currentPort)
 	}
 	portStr := tap.Text(context.Background(), tap.TextOptions{
 		Message:      fmt.Sprintf("Daemon Port (default: %d)", config.DefaultAgentPort),
 		DefaultValue: defaultValue,
 		InitialValue: defaultValue,
 		Validate: func(s string) error {
-			portChecker := CheckPortAvailability
-			if os.Getenv("GRUBSTATION_SKIP_PORT_CHECK") == "true" {
-				portChecker = func(int) error { return nil }
+			if s == "" {
+				return fmt.Errorf("port cannot be empty")
 			}
-			return ValidatePort(s, state.IsReinstall, state.CurrentPort, portChecker)
+			p, err := strconv.Atoi(s)
+			if err != nil {
+				return fmt.Errorf("invalid port: %w", err)
+			}
+			if p < 1 || p > 65535 {
+				return fmt.Errorf("port must be between 1 and 65535")
+			}
+			return nil
 		},
 	})
 	port, _ := strconv.Atoi(portStr)
@@ -126,24 +137,20 @@ func stepSelectDaemonPort(state SystemState, runsDaemon bool) (int, error) {
 	return port, nil
 }
 
-func stepSelectWOLAddress(iface net.Interface, getIPInfo func(net.Interface) ([]string, map[string]string)) (string, error) {
+func stepSelectWOLAddress(iface net.Interface, getIPInfo func(net.Interface) ([]string, map[string]string)) string {
 	ips, broadcasts := getIPInfo(iface)
 	wolBroadcastAddress := tap.Select(context.Background(), tap.SelectOptions[string]{
 		Message: "WOL Broadcast Address (you may need to choose subnet broadcast for cross-VLAN setups)",
 		Options: BuildWolOptions(ips, broadcasts),
 	})
 	log.Debug().Interface("address", wolBroadcastAddress).Msg("Selected WOL broadcast address")
-	return wolBroadcastAddress, nil
+	return wolBroadcastAddress
 }
 
-func stepSelectGRUBWaitTime(grubConfigPath string, reportsBoot bool) (int, string, error) {
-	if !reportsBoot {
-		return 0, "", nil
-	}
-
+func stepSelectGRUBWaitTime() (int, error) {
 	defaultWait := strconv.Itoa(config.DefaultGrubWaitSeconds)
 	waitStr := tap.Text(context.Background(), tap.TextOptions{
-		Message:      "GRUB Network Wait (seconds to wait for network before getting next boot option from Home Assistant)",
+		Message:      "GRUB Network Wait (seconds to wait for network during boot)",
 		DefaultValue: defaultWait,
 		InitialValue: defaultWait,
 		Validate: func(s string) error {
@@ -152,15 +159,14 @@ func stepSelectGRUBWaitTime(grubConfigPath string, reportsBoot bool) (int, strin
 	})
 	grubWaitTime, _ := strconv.Atoi(waitStr)
 	log.Debug().Interface("seconds", grubWaitTime).Msg("Selected GRUB wait time")
-	return grubWaitTime, grubConfigPath, nil
+	return grubWaitTime, nil
 }
 
-// AssembleConfig is a pure function that populates the Config struct.
-func AssembleConfig(ifaceName string, mac string, wolAddress string, agentPort int, reportsBoot bool, grubWait int, grubPath string) *config.Config {
-	cfg := &config.Config{
+// AssembleConfig is a pure function that populates the Config struct with wizard choices.
+func AssembleConfig(ifaceName string, agentPort int, wolAddress string, reportsBoot bool, grubWait int, grubPath string) *config.Config {
+	return &config.Config{
 		Host: config.HostConfig{
 			Interface: ifaceName,
-			MAC:       mac,
 		},
 		WakeOnLan: config.WakeOnLanConfig{
 			Address: wolAddress,
@@ -174,8 +180,6 @@ func AssembleConfig(ifaceName string, mac string, wolAddress string, agentPort i
 			Path:            grubPath,
 		},
 	}
-
-	return cfg
 }
 
 func PrintConfigSummary(cmd any, cfg *config.Config, cfgPath string) {

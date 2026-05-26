@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,6 +18,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yarlson/tap"
 )
+
+var ErrElevated = errors.New("elevated")
 
 func NewSetupCmd() *cobra.Command {
 	var applyOnly bool
@@ -64,6 +67,10 @@ func NewSetupCmd() *cobra.Command {
 
 			if runtime.GOOS == "windows" {
 				defer func() {
+					if err == ErrElevated {
+						return
+					}
+
 					if err != nil {
 						tap.Outro(fmt.Sprintf("Error: %v", err))
 					}
@@ -81,32 +88,32 @@ func NewSetupCmd() *cobra.Command {
 				return performInstall(cmd, cfgPath, "")
 			}
 
-			if !dryRun {
-				mgr, err := GetManager()
-				if err != nil {
-					return err
-				}
-				if err := mgr.CheckPermissions(); err != nil {
-					return err
-				}
-			}
-
 			cfgPath, err := cmd.Flags().GetString("config")
 			if err != nil || cfgPath == "" {
 				cfgPath = config.DefaultConfigPath()
 			}
 
 			var currentPort int
+			isConfigured := false
 			if existingCfg, err := config.LoadConfig(cfgPath); err == nil {
 				currentPort = existingCfg.Daemon.Port
+				isConfigured = true
 			}
 
-			cfg, err := doWizard(cfgPath, currentPort, dryRun)
+			h := host.New()
+			cfg, err := wizard.RunGenerateSurvey(isConfigured, currentPort, dryRun, h.GetIPInfo)
 			if err != nil {
+				if errors.Is(err, wizard.ErrAborted) {
+					tap.Message("Setup aborted.")
+					tap.Outro("Goodbye!")
+					return nil
+				}
 				return err
 			}
-			if cfg == nil {
-				return nil // Aborted
+
+			// Perform technical "state data" discovery after the wizard
+			if err := populateTechnicalConfig(cfg); err != nil {
+				return err
 			}
 
 			if dryRun {
@@ -123,39 +130,23 @@ func NewSetupCmd() *cobra.Command {
 	return cmd
 }
 
-func doWizard(cfgPath string, currentPort int, dryRun bool) (*config.Config, error) {
-	// Clear the terminal screen before starting the interactive wizard
-	fmt.Print("\033[H\033[2J")
-	tap.Intro("GrubStation Setup")
-
-	isConfigured := false
-	if _, err := os.Stat(cfgPath); err == nil {
-		isConfigured = true
-	}
-
-	// Perform initial discovery
-	h := host.New()
-	interfaces, _ := h.GetWOLInterfaces()
-	g := grub.NewGrub()
-	grubConfigPath, _ := g.DiscoverConfigPath()
-
-	state := wizard.SystemState{
-		Interfaces:     interfaces,
-		GrubConfigPath: grubConfigPath,
-		IsReinstall:    isConfigured,
-		CurrentPort:    currentPort,
-	}
-
-	cfg, err := wizard.RunGenerateSurvey(state, dryRun, h.GetIPInfo, h.GetFQDN)
+func populateTechnicalConfig(cfg *config.Config) error {
+	iface, err := net.InterfaceByName(cfg.Host.Interface)
 	if err != nil {
-		if errors.Is(err, wizard.ErrAborted) {
-			tap.Message("Setup aborted.")
-			tap.Outro("Goodbye!")
-			return nil, nil
-		}
-		return nil, err
+		return fmt.Errorf("failed to get interface %s: %w", cfg.Host.Interface, err)
 	}
-	return cfg, nil
+
+	cfg.Host.MAC = iface.HardwareAddr.String()
+
+	// Ensure defaults for optional fields if not set by wizard (though it usually is)
+	if cfg.WakeOnLan.Port == 0 {
+		cfg.WakeOnLan.Port = config.DefaultWolBroadcastPort
+	}
+	if cfg.WakeOnLan.Address == "" {
+		cfg.WakeOnLan.Address = config.DefaultWolBroadcastAddress
+	}
+
+	return nil
 }
 
 func doDryRun(cfg *config.Config, cfgPath string) error {
@@ -221,6 +212,9 @@ func doInstallation(cmd *cobra.Command, cfg *config.Config, cfgPath string) erro
 	GlobalConfigFile = cfgPath
 
 	if err := performInstall(cmd, cfgPath, ""); err != nil {
+		if err == ErrElevated {
+			return nil
+		}
 		return err
 	}
 

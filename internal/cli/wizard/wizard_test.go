@@ -9,9 +9,12 @@ import (
 )
 
 func TestAssembleConfig_Complete(t *testing.T) {
-	cfg := AssembleConfig("eth0", "mac", "wol", 8081, true, 5, "/boot/grub/grub.cfg")
+	cfg := AssembleConfig("eth0", 8081, "1.2.3.255", true, 5, "/boot/grub/grub.cfg")
 	if cfg.Host.Interface != "eth0" {
 		t.Errorf("expected interface eth0, got %s", cfg.Host.Interface)
+	}
+	if cfg.WakeOnLan.Address != "1.2.3.255" {
+		t.Errorf("expected wol address 1.2.3.255, got %s", cfg.WakeOnLan.Address)
 	}
 }
 

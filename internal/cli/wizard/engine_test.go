@@ -49,9 +49,29 @@ func TestValidatePort_Pure(t *testing.T) {
 	}
 }
 
+func TestBuildWolOptions(t *testing.T) {
+	ips := []string{"192.168.1.50", "10.0.0.50"}
+	broadcasts := map[string]string{
+		"192.168.1.50": "192.168.1.255",
+		"10.0.0.50":    "10.0.0.255",
+	}
+
+	opts := BuildWolOptions(ips, broadcasts)
+
+	if len(opts) != 3 {
+		t.Fatalf("expected 3 options, got %d", len(opts))
+	}
+	if opts[0].Value != "255.255.255.255" {
+		t.Errorf("expected DefaultWolBroadcastAddress, got %s", opts[0].Value)
+	}
+	if opts[1].Value != "192.168.1.255" {
+		t.Errorf("expected subnet broadcast 192.168.1.255, got %s", opts[1].Value)
+	}
+}
+
 func TestAssembleConfig(t *testing.T) {
-	cfg := AssembleConfig("eth0", "mac", "wol", 8081, true, 2, "path")
-	if cfg.Host.Interface != "eth0" || cfg.Daemon.Port != 8081 || !cfg.Daemon.ReportBootOptions {
+	cfg := AssembleConfig("eth0", 8081, "1.2.3.255", true, 2, "path")
+	if cfg.Host.Interface != "eth0" || cfg.Daemon.Port != 8081 || cfg.WakeOnLan.Address != "1.2.3.255" {
 		t.Errorf("unexpected config: %+v", cfg)
 	}
 }
