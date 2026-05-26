@@ -208,6 +208,12 @@ func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, c
 		return err
 	}
 
+	// Initialize empty state
+	pairState := &config.State{Paired: false}
+	if err := pairState.Save(cfgPath); err != nil {
+		return err
+	}
+
 	tap.Outro("Configuration setup complete.", tap.MessageOptions{
 		Hint: fmt.Sprintf("saved to: %s", cfgPath),
 	})

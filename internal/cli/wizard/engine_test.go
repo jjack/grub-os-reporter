@@ -9,43 +9,6 @@ import (
 	"testing"
 )
 
-func TestGetModeOptions(t *testing.T) {
-	t.Run("with grub config", func(t *testing.T) {
-		opts := GetModeOptions("/boot/grub/grub.cfg")
-		if len(opts) != 3 {
-			t.Errorf("expected 3 options, got %d", len(opts))
-		}
-	})
-
-	t.Run("without grub config", func(t *testing.T) {
-		opts := GetModeOptions("")
-		if len(opts) != 1 {
-			t.Errorf("expected 1 option, got %d", len(opts))
-		}
-	})
-}
-
-func TestGetModeFlags(t *testing.T) {
-	tests := []struct {
-		mode        string
-		reportsBoot bool
-		runsDaemon  bool
-	}{
-		{ModeDaemonBoth, true, true},
-		{ModeDaemonShutdown, false, true},
-		{ModeHookOnly, true, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.mode, func(t *testing.T) {
-			reports, runs := GetModeFlags(tt.mode)
-			if reports != tt.reportsBoot || runs != tt.runsDaemon {
-				t.Errorf("GetModeFlags(%s) = (%v, %v), want (%v, %v)", tt.mode, reports, runs, tt.reportsBoot, tt.runsDaemon)
-			}
-		})
-	}
-}
-
 func TestBuildIfaceOptions_Pure(t *testing.T) {
 	mac, _ := net.ParseMAC("00:11:22:33:44:55")
 	ifaces := []net.Interface{

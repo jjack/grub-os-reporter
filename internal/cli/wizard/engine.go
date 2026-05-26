@@ -14,34 +14,6 @@ import (
 	"github.com/yarlson/tap"
 )
 
-// Mode constants
-const (
-	ModeDaemonBoth     = "Daemon (Remote shutdown + Report boot options)"
-	ModeDaemonShutdown = "Daemon (Remote shutdown only)"
-	ModeHookOnly       = "Shutdown hook (Report boot options only)"
-)
-
-// GetModeOptions returns the available installation modes based on whether a GRUB config was found.
-func GetModeOptions(grubConfigPath string) []tap.SelectOption[string] {
-	if grubConfigPath != "" {
-		return []tap.SelectOption[string]{
-			{Value: ModeDaemonBoth, Label: ModeDaemonBoth},
-			{Value: ModeDaemonShutdown, Label: ModeDaemonShutdown},
-			{Value: ModeHookOnly, Label: ModeHookOnly},
-		}
-	}
-	return []tap.SelectOption[string]{
-		{Value: ModeDaemonShutdown, Label: ModeDaemonShutdown},
-	}
-}
-
-// GetModeFlags converts a selected mode string into boolean flags.
-func GetModeFlags(mode string) (reportsBoot, runsDaemon bool) {
-	reportsBoot = mode == ModeDaemonBoth || mode == ModeHookOnly
-	runsDaemon = mode == ModeDaemonBoth || mode == ModeDaemonShutdown
-	return
-}
-
 // BuildIfaceOptions builds the selection options for network interfaces.
 func BuildIfaceOptions(interfaces []net.Interface, ipProvider func(net.Interface) ([]string, map[string]string)) []tap.SelectOption[int] {
 	var opts []tap.SelectOption[int]

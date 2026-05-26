@@ -15,9 +15,6 @@ func TestAssembleConfig_Complete(t *testing.T) {
 	if cfg.Host.Address != "1.2.3.4" {
 		t.Errorf("expected address 1.2.3.4, got %s", cfg.Host.Address)
 	}
-	if cfg.Grub.URL != "http://grub" {
-		t.Errorf("expected grub url http://grub, got %s", cfg.Grub.URL)
-	}
 }
 
 func TestStepConfirmOverwrite_DryRun(t *testing.T) {

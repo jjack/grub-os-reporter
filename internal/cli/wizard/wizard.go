@@ -38,12 +38,16 @@ func generateConfigInteractive(ctx context.Context, state SystemState, isDryRun 
 	// Start background tasks
 	fqdnChan := startFQDNResolution(ctx, state.Hostname, getFQDN)
 
-	// 1. Installation Mode
-	mode, err := stepSelectInstallationMode(ctx, state.GrubConfigPath)
-	if err != nil {
-		return nil, err
+	// 1. Boot Reporting (only if GRUB is present)
+	var reportsBoot bool
+	var err error
+	if state.GrubConfigPath != "" {
+		reportsBoot, err = stepPromptReportBootOptions(ctx, state.GrubConfigPath)
+		if err != nil {
+			return nil, err
+		}
 	}
-	reportsBoot, runsDaemon := GetModeFlags(mode)
+	runsDaemon := true // Always daemon
 
 	// 2. Network Interface
 	selectedIface, err := stepSelectNetworkInterface(ctx, state.Interfaces, getIPInfo)
@@ -95,6 +99,18 @@ func stepConfirmOverwrite(ctx context.Context, isReinstall, isDryRun bool) error
 	return nil
 }
 
+func stepPromptReportBootOptions(ctx context.Context, grubPath string) (bool, error) {
+	reportsBoot := tap.Confirm(ctx, tap.ConfirmOptions{
+		Message:      "Enable remote boot selection (report GRUB options to Home Assistant)?",
+		InitialValue: true,
+	})
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	log.Debug().Interface("reportsBoot", reportsBoot).Msg("User selected boot reporting preference")
+	return reportsBoot, nil
+}
+
 type fqdnResolutionResult struct {
 	fqdn string
 }
@@ -108,18 +124,6 @@ func startFQDNResolution(ctx context.Context, hostname string, getFQDN func(stri
 		globalInfoChan <- fqdnResolutionResult{fqdn}
 	}()
 	return globalInfoChan
-}
-
-func stepSelectInstallationMode(ctx context.Context, grubConfigPath string) (string, error) {
-	mode := tap.Select(ctx, tap.SelectOptions[string]{
-		Message: "Installation Mode",
-		Options: GetModeOptions(grubConfigPath),
-	})
-	if ctx.Err() != nil {
-		return "", ctx.Err()
-	}
-	log.Debug().Interface("mode", mode).Msg("Selected installation mode")
-	return mode, nil
 }
 
 func stepSelectNetworkInterface(ctx context.Context, interfaces []net.Interface, getIPInfo func(net.Interface) ([]string, map[string]string)) (net.Interface, error) {
@@ -231,7 +235,7 @@ func stepSelectGRUBWaitTime(ctx context.Context, grubConfigPath string, reportsB
 	return grubWaitTime, grubConfigPath, nil
 }
 
-// AssembleConfig is a pure function that populates the Config and State structs.
+// AssembleConfig is a pure function that populates the Config struct.
 func AssembleConfig(hostAddress string, mac string, wolAddress string, agentPort int, reportsBoot bool, grubWait int, grubPath string) *config.Config {
 	cfg := &config.Config{
 		Host: config.HostConfig{
