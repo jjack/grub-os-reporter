@@ -25,7 +25,7 @@ func LoadState(configPath string) (*State, error) {
 		}
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var state State
 	if err := json.NewDecoder(f).Decode(&state); err != nil {
@@ -46,7 +46,7 @@ func (s *State) Save(configPath string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	encoder := json.NewEncoder(f)
 	encoder.SetIndent("", "  ")

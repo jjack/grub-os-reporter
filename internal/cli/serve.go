@@ -69,10 +69,6 @@ func NewServeCmd() *cobra.Command {
 			g := grub.NewGrub()
 			g.ConfigPath = GlobalConfig.Grub.Path
 			server := api.NewServer(GlobalConfig, state, GlobalConfigFile, g, host.New().GetIPInfo, mdnsServer)
-			server.ShutdownHandler = func() error {
-				// Perform OS-specific shutdown
-				return shutdownSystem()
-			}
 
 			httpSrv := &http.Server{
 				Addr:         fmt.Sprintf(":%d", GlobalConfig.Daemon.Port),

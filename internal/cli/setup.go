@@ -18,8 +18,6 @@ import (
 	"github.com/yarlson/tap"
 )
 
-var ErrElevated = errors.New("elevated")
-
 func NewSetupCmd() *cobra.Command {
 	var applyOnly bool
 	var dryRun bool
@@ -66,10 +64,6 @@ func NewSetupCmd() *cobra.Command {
 
 			if runtime.GOOS == "windows" {
 				defer func() {
-					if err == ErrElevated {
-						return
-					}
-
 					if err != nil {
 						tap.Outro(fmt.Sprintf("Error: %v", err))
 					}
@@ -152,7 +146,7 @@ func doWizard(cfgPath string, currentPort int, dryRun bool) (*config.Config, err
 		CurrentPort:    currentPort,
 	}
 
-	cfg, err := wizard.RunGenerateSurvey(state, dryRun, h.GetIPInfo, h.GetFQDN, homeassistant.Discover)
+	cfg, err := wizard.RunGenerateSurvey(state, dryRun, h.GetIPInfo, h.GetFQDN)
 	if err != nil {
 		if errors.Is(err, wizard.ErrAborted) {
 			tap.Message("Setup aborted.")
@@ -227,9 +221,6 @@ func doInstallation(cmd *cobra.Command, cfg *config.Config, cfgPath string) erro
 	GlobalConfigFile = cfgPath
 
 	if err := performInstall(cmd, cfgPath, ""); err != nil {
-		if err == ErrElevated {
-			return nil
-		}
 		return err
 	}
 

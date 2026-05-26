@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/jjack/grubstation/internal/config"
-	"github.com/jjack/grubstation/internal/homeassistant"
 	"github.com/rs/zerolog/log"
 	"github.com/yarlson/tap"
 	"gopkg.in/yaml.v3"
@@ -24,12 +23,12 @@ type SystemState struct {
 }
 
 var (
-	RunGenerateSurvey func(SystemState, bool, func(net.Interface) ([]string, map[string]string), func(string, *net.Interface) string, func() ([]homeassistant.ServiceInstance, error)) (*config.Config, error) = generateConfigInteractive
+	RunGenerateSurvey func(SystemState, bool, func(net.Interface) ([]string, map[string]string), func(string, *net.Interface) string) (*config.Config, error) = generateConfigInteractive
 
 	ErrAborted = errors.New("setup aborted")
 )
 
-func generateConfigInteractive(state SystemState, isDryRun bool, getIPInfo func(net.Interface) ([]string, map[string]string), getFQDN func(string, *net.Interface) string, discoverHA func() ([]homeassistant.ServiceInstance, error)) (*config.Config, error) {
+func generateConfigInteractive(state SystemState, isDryRun bool, getIPInfo func(net.Interface) ([]string, map[string]string), getFQDN func(string, *net.Interface) string) (*config.Config, error) {
 	if err := stepConfirmOverwrite(state.IsReinstall, isDryRun); err != nil {
 		return nil, err
 	}

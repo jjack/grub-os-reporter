@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"os/exec"
 	"runtime"
 	"time"
 
@@ -30,8 +31,6 @@ type Server struct {
 	IPProvider func(net.Interface) ([]string, map[string]string)
 
 	MDNSUpdater MDNSUpdater
-
-	ShutdownHandler func() error
 }
 
 func NewServer(cfg *config.Config, state *config.State, configFile string, g *grub.Grub, ipProvider func(net.Interface) ([]string, map[string]string), mdns MDNSUpdater) *Server {
@@ -203,9 +202,14 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		time.Sleep(1 * time.Second) // Give response time to send
-		if s.ShutdownHandler != nil {
-			if err := s.ShutdownHandler(); err != nil {
-				log.Error().Err(err).Msg("Shutdown handler failed")
+		switch runtime.GOOS {
+		case "linux":
+			if err := exec.Command("poweroff").Run(); err != nil {
+				log.Error().Err(err).Msg("poweroff command failed")
+			}
+		case "windows":
+			if err := exec.Command("shutdown", "/s", "/t", "0").Run(); err != nil {
+				log.Error().Err(err).Msg("shutdown command failed")
 			}
 		}
 	}()
