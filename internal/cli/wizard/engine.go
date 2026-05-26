@@ -6,30 +6,26 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/huh/v2"
 	"github.com/jjack/grubstation/internal/config"
 	"github.com/rs/zerolog/log"
-	"github.com/yarlson/tap"
 )
 
 // BuildIfaceOptions builds the selection options for network interfaces.
-func BuildIfaceOptions(interfaces []net.Interface, ipProvider func(net.Interface) ([]string, map[string]string)) []tap.SelectOption[int] {
-	var opts []tap.SelectOption[int]
+func BuildIfaceOptions(interfaces []net.Interface, ipProvider func(net.Interface) ([]string, map[string]string)) []huh.Option[int] {
+	var opts []huh.Option[int]
 	for i, inf := range interfaces {
 		ips, _ := ipProvider(inf)
-		desc := fmt.Sprintf("(%s) [%s]", inf.HardwareAddr.String(), strings.Join(ips, ", "))
-		opts = append(opts, tap.SelectOption[int]{
-			Value: i,
-			Label: inf.Name,
-			Hint:  desc,
-		})
+		label := fmt.Sprintf("%s (%s) [%s]", inf.Name, inf.HardwareAddr.String(), strings.Join(ips, ", "))
+		opts = append(opts, huh.NewOption(label, i))
 	}
 	return opts
 }
 
 // BuildWolOptions builds the selection options for the WOL broadcast address.
-func BuildWolOptions(ips []string, ipBroadcasts map[string]string) []tap.SelectOption[string] {
-	opts := []tap.SelectOption[string]{
-		{Value: config.DefaultWolBroadcastAddress, Label: fmt.Sprintf("%s (Default)", config.DefaultWolBroadcastAddress)},
+func BuildWolOptions(ips []string, ipBroadcasts map[string]string) []huh.Option[string] {
+	opts := []huh.Option[string]{
+		huh.NewOption(fmt.Sprintf("%s (Default)", config.DefaultWolBroadcastAddress), config.DefaultWolBroadcastAddress),
 	}
 
 	seenBroadcasts := make(map[string]bool)
@@ -41,10 +37,8 @@ func BuildWolOptions(ips []string, ipBroadcasts map[string]string) []tap.SelectO
 
 		if !seenBroadcasts[bc] {
 			seenBroadcasts[bc] = true
-			opts = append(opts, tap.SelectOption[string]{
-				Value: bc,
-				Label: fmt.Sprintf("%s (Subnet broadcast for %s)", bc, ip),
-			})
+			label := fmt.Sprintf("%s (Subnet broadcast for %s)", bc, ip)
+			opts = append(opts, huh.NewOption(label, bc))
 		}
 	}
 	return opts

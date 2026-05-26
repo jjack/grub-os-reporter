@@ -3,6 +3,7 @@ package wizard
 import (
 	"errors"
 	"net"
+	"strings"
 	"testing"
 )
 
@@ -16,8 +17,11 @@ func TestBuildIfaceOptions_Pure(t *testing.T) {
 	}
 
 	opts := BuildIfaceOptions(ifaces, ipProvider)
-	if len(opts) != 1 || opts[0].Label != "eth0" {
+	if len(opts) != 1 || !strings.Contains(opts[0].Key, "eth0") {
 		t.Errorf("unexpected options: %v", opts)
+	}
+	if opts[0].Value != 0 {
+		t.Errorf("expected value 0, got %v", opts[0].Value)
 	}
 }
 

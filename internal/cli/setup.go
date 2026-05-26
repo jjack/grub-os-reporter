@@ -19,8 +19,6 @@ import (
 	"github.com/yarlson/tap"
 )
 
-var ErrElevated = errors.New("elevated")
-
 func NewSetupCmd() *cobra.Command {
 	var applyOnly bool
 	var dryRun bool
@@ -67,10 +65,6 @@ func NewSetupCmd() *cobra.Command {
 
 			if runtime.GOOS == "windows" {
 				defer func() {
-					if err == ErrElevated {
-						return
-					}
-
 					if err != nil {
 						tap.Outro(fmt.Sprintf("Error: %v", err))
 					}
@@ -93,15 +87,7 @@ func NewSetupCmd() *cobra.Command {
 				cfgPath = config.DefaultConfigPath()
 			}
 
-			var currentPort int
-			isConfigured := false
-			if existingCfg, err := config.LoadConfig(cfgPath); err == nil {
-				currentPort = existingCfg.Daemon.Port
-				isConfigured = true
-			}
-
-			h := host.New()
-			cfg, err := wizard.RunGenerateSurvey(isConfigured, currentPort, dryRun, h.GetIPInfo)
+			cfg, err := wizard.RunGenerateSurvey(dryRun, host.New().GetIPInfo)
 			if err != nil {
 				if errors.Is(err, wizard.ErrAborted) {
 					tap.Message("Setup aborted.")
@@ -150,7 +136,7 @@ func populateTechnicalConfig(cfg *config.Config) error {
 }
 
 func doDryRun(cfg *config.Config, cfgPath string) error {
-	wizard.PrintConfigSummary(nil, cfg, cfgPath)
+	wizard.PrintConfigSummary(os.Stdout, cfg, cfgPath)
 
 	mgr, err := GetManager()
 	if err != nil {
@@ -212,9 +198,6 @@ func doInstallation(cmd *cobra.Command, cfg *config.Config, cfgPath string) erro
 	GlobalConfigFile = cfgPath
 
 	if err := performInstall(cmd, cfgPath, ""); err != nil {
-		if err == ErrElevated {
-			return nil
-		}
 		return err
 	}
 

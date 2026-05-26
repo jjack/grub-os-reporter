@@ -1,11 +1,11 @@
 package wizard
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/jjack/grubstation/internal/config"
-	"github.com/yarlson/tap"
 )
 
 func TestAssembleConfig_Complete(t *testing.T) {
@@ -27,9 +27,7 @@ func TestStepConfirmOverwrite_DryRun(t *testing.T) {
 }
 
 func TestPrintConfigSummary(t *testing.T) {
-	tapOut := tap.NewMockWritable()
-	tap.SetTermIO(nil, tapOut)
-	defer tap.SetTermIO(nil, nil)
+	var buf bytes.Buffer
 
 	cfg := &config.Config{
 		Host: config.HostConfig{
@@ -49,9 +47,9 @@ func TestPrintConfigSummary(t *testing.T) {
 		},
 	}
 
-	PrintConfigSummary(nil, cfg, "/etc/grubstation/config.yaml")
+	PrintConfigSummary(&buf, cfg, "/etc/grubstation/config.yaml")
 
-	out := strings.Join(tapOut.Buffer, "")
+	out := buf.String()
 	if !strings.Contains(out, "/etc/grubstation/config.yaml") {
 		t.Errorf("expected config path, got %s", out)
 	}
