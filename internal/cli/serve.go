@@ -14,6 +14,7 @@ import (
 	"github.com/jjack/grubstation/internal/config"
 	"github.com/jjack/grubstation/internal/grub"
 	"github.com/jjack/grubstation/internal/homeassistant"
+	"github.com/jjack/grubstation/internal/mdns"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -55,7 +56,15 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 				}
 			}
 
-			server := api.NewServer(deps.Config, state, deps.ConfigFile, deps.Grub, deps.Host.GetIPInfo)
+			// Start mDNS
+			mdnsServer, err := mdns.Start(deps.Config.Daemon.Port, deps.Config.Host.MAC, deps.Config.Host.Interface, state.Paired)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to start mDNS responder")
+			} else {
+				defer mdnsServer.Shutdown()
+			}
+
+			server := api.NewServer(deps.Config, state, deps.ConfigFile, deps.Grub, deps.Host.GetIPInfo, mdnsServer)
 			server.ShutdownHandler = func() error {
 				// Perform OS-specific shutdown
 				return shutdownSystem()

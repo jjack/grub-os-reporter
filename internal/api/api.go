@@ -17,6 +17,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type MDNSUpdater interface {
+	UpdatePaired(paired bool) error
+}
+
 type Server struct {
 	Config     *config.Config
 	State      *config.State
@@ -26,17 +30,20 @@ type Server struct {
 
 	IPProvider func(net.Interface) ([]string, map[string]string)
 
+	MDNSUpdater MDNSUpdater
+
 	ShutdownHandler func() error
 }
 
-func NewServer(cfg *config.Config, state *config.State, configFile string, g *grub.Grub, ipProvider func(net.Interface) ([]string, map[string]string)) *Server {
+func NewServer(cfg *config.Config, state *config.State, configFile string, g *grub.Grub, ipProvider func(net.Interface) ([]string, map[string]string), mdns MDNSUpdater) *Server {
 	s := &Server{
-		Config:     cfg,
-		State:      state,
-		ConfigFile: configFile,
-		Grub:       g,
-		Router:     chi.NewRouter(),
-		IPProvider: ipProvider,
+		Config:      cfg,
+		State:       state,
+		ConfigFile:  configFile,
+		Grub:        g,
+		Router:      chi.NewRouter(),
+		IPProvider:  ipProvider,
+		MDNSUpdater: mdns,
 	}
 
 	s.Router.Use(ZerologMiddleware)
@@ -163,6 +170,13 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 				log.Error().Err(err).Msg("Failed to apply GRUB config after pairing")
 			}
 		}
+
+		// 4. Update mDNS status
+		if s.MDNSUpdater != nil {
+			if err := s.MDNSUpdater.UpdatePaired(true); err != nil {
+				log.Error().Err(err).Msg("Failed to update mDNS status after pairing")
+			}
+		}
 	}()
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -181,6 +195,13 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("Failed to clear state during unpairing")
 		s.jsonError(w, http.StatusInternalServerError, "Failed to clear pairing state")
 		return
+	}
+
+	// Update mDNS status
+	if s.MDNSUpdater != nil {
+		if err := s.MDNSUpdater.UpdatePaired(false); err != nil {
+			log.Error().Err(err).Msg("Failed to update mDNS status after unpairing")
+		}
 	}
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})
