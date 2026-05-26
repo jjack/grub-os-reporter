@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -75,23 +74,10 @@ func NewServiceRemoveCmd(deps *CommandDeps) *cobra.Command {
 			// Try to unregister from HA first if configured
 			state, _ := config.LoadState(deps.ConfigFile)
 			if state.HADaemonURL != "" && state.WebhookID != "" {
-				mac := deps.Config.Host.MAC
-				addr := ""
-
-				// Get current IP for this interface to register with HA
-				if iface, err := net.InterfaceByName(deps.Config.Host.Interface); err == nil {
-					ips, _ := deps.Host.GetIPInfo(*iface)
-					if len(ips) > 0 {
-						addr = ips[0]
-					}
-				}
-
-				if mac != "" && addr != "" {
-					cmd.Printf("Unregistering from Home Assistant...\n")
-					client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
-					if err := client.UnregisterHost(cmd.Context(), mac, addr); err != nil {
-						cmd.Printf("Warning: failed to unregister from Home Assistant: %v\n", err)
-					}
+				cmd.Printf("Unregistering from Home Assistant...\n")
+				client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
+				if err := client.UnregisterHost(cmd.Context(), deps.Config, state); err != nil {
+					cmd.Printf("Warning: failed to unregister from Home Assistant: %v\n", err)
 				}
 			}
 

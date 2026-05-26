@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/jjack/grubstation/internal/config"
 )
 
 func TestClient_Push(t *testing.T) {
@@ -66,7 +69,17 @@ func TestClient_RegisterAgent(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient(ts.URL, "test-webhook", nil)
-	err := client.RegisterAgent(context.Background(), "mac", "ip", "token", 8081)
+	// Mock host info to avoid real network lookup
+	client.HostInfo.NetInterfaces = func() ([]net.Interface, error) { return nil, nil }
+	client.HostInfo.GetAddrs = func(iface net.Interface) ([]net.Addr, error) { return nil, nil }
+
+	cfg := &config.Config{
+		Host:   config.HostConfig{MAC: "mac", Interface: "eth0"},
+		Daemon: config.DaemonConfig{Port: 8081},
+	}
+	state := &config.State{APIKey: "token"}
+
+	err := client.RegisterAgent(context.Background(), cfg, state)
 	if err != nil {
 		t.Fatalf("RegisterAgent failed: %v", err)
 	}
@@ -89,7 +102,16 @@ func TestClient_UpdateBootOptions(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient(ts.URL, "test-webhook", nil)
-	err := client.UpdateBootOptions(context.Background(), "mac", "ip", []string{"Ubuntu", "Windows"}, "1.1.1.255", 9)
+	client.HostInfo.NetInterfaces = func() ([]net.Interface, error) { return nil, nil }
+	client.HostInfo.GetAddrs = func(iface net.Interface) ([]net.Addr, error) { return nil, nil }
+
+	cfg := &config.Config{
+		Host:      config.HostConfig{MAC: "mac", Interface: "eth0"},
+		WakeOnLan: config.WakeOnLanConfig{Address: "1.1.1.255", Port: 9},
+	}
+	state := &config.State{}
+
+	err := client.UpdateBootOptions(context.Background(), cfg, state, []string{"Ubuntu", "Windows"})
 	if err != nil {
 		t.Fatalf("UpdateBootOptions failed: %v", err)
 	}
@@ -115,7 +137,15 @@ func TestClient_UnregisterHost_Method(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient(ts.URL, "test-webhook", nil)
-	err := client.UnregisterHost(context.Background(), "mac", "ip")
+	client.HostInfo.NetInterfaces = func() ([]net.Interface, error) { return nil, nil }
+	client.HostInfo.GetAddrs = func(iface net.Interface) ([]net.Addr, error) { return nil, nil }
+
+	cfg := &config.Config{
+		Host: config.HostConfig{MAC: "mac", Interface: "eth0"},
+	}
+	state := &config.State{}
+
+	err := client.UnregisterHost(context.Background(), cfg, state)
 	if err != nil {
 		t.Fatalf("UnregisterHost failed: %v", err)
 	}

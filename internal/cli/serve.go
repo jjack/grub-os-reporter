@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -87,23 +86,14 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 					haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 					log.Info().Msg("Performing initial registration with Home Assistant")
 
-					// Get current IP for this interface to register with HA
-					addr := ""
-					if iface, err := net.InterfaceByName(deps.Config.Host.Interface); err == nil {
-						ips, _ := deps.Host.GetIPInfo(*iface)
-						if len(ips) > 0 {
-							addr = ips[0]
-						}
-					}
-
-					if err := haClient.RegisterAgent(ctx, deps.Config.Host.MAC, addr, state.APIKey, deps.Config.Daemon.Port); err != nil {
+					if err := haClient.RegisterAgent(ctx, deps.Config, state); err != nil {
 						log.Warn().Err(err).Msg("Initial registration failed")
 					}
 
 					if deps.Config.Daemon.ReportBootOptions {
 						log.Info().Msg("Pushing initial boot options to Home Assistant")
 						options, _ := deps.Grub.GetBootOptions(ctx)
-						if err := haClient.UpdateBootOptions(ctx, deps.Config.Host.MAC, addr, options, deps.Config.WakeOnLan.Address, deps.Config.WakeOnLan.Port); err != nil {
+						if err := haClient.UpdateBootOptions(ctx, deps.Config, state, options); err != nil {
 							log.Error().Err(err).Msg("Initial update failed")
 						}
 					}
@@ -132,17 +122,8 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 				defer cancel()
 				haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 
-				// Get current IP
-				addr := ""
-				if iface, err := net.InterfaceByName(deps.Config.Host.Interface); err == nil {
-					ips, _ := deps.Host.GetIPInfo(*iface)
-					if len(ips) > 0 {
-						addr = ips[0]
-					}
-				}
-
 				options, _ := deps.Grub.GetBootOptions(ctx)
-				_ = haClient.UpdateBootOptions(ctx, deps.Config.Host.MAC, addr, options, deps.Config.WakeOnLan.Address, deps.Config.WakeOnLan.Port)
+				_ = haClient.UpdateBootOptions(ctx, deps.Config, state, options)
 			}
 
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

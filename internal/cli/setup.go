@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -283,17 +282,8 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 			tap.Message("Pushing initial boot options to Home Assistant...")
 			haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 
-			// Get current IP for this interface to register with HA
-			addr := ""
-			if iface, err := net.InterfaceByName(deps.Config.Host.Interface); err == nil {
-				ips, _ := deps.Host.GetIPInfo(*iface)
-				if len(ips) > 0 {
-					addr = ips[0]
-				}
-			}
-
 			if token != "" {
-				if err := haClient.RegisterAgent(cmd.Context(), deps.Config.Host.MAC, addr, token, deps.Config.Daemon.Port); err != nil {
+				if err := haClient.RegisterAgent(cmd.Context(), deps.Config, state); err != nil {
 					return err
 				}
 			}
@@ -303,7 +293,7 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 				return err
 			}
 
-			if err := haClient.UpdateBootOptions(cmd.Context(), deps.Config.Host.MAC, addr, options, deps.Config.WakeOnLan.Address, deps.Config.WakeOnLan.Port); err != nil {
+			if err := haClient.UpdateBootOptions(cmd.Context(), deps.Config, state, options); err != nil {
 				return err
 			}
 			tap.Message("Successfully pushed initial state to Home Assistant.")

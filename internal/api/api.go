@@ -135,24 +135,15 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 
 		haClient := homeassistant.NewClient(s.State.HADaemonURL, s.State.WebhookID, nil)
 
-		// Get current IP for this interface to register with HA
-		addr := ""
-		if iface, err := net.InterfaceByName(s.Config.Host.Interface); err == nil && s.IPProvider != nil {
-			ips, _ := s.IPProvider(*iface)
-			if len(ips) > 0 {
-				addr = ips[0]
-			}
-		}
-
 		// 1. Register agent
-		if err := haClient.RegisterAgent(ctx, s.Config.Host.MAC, addr, s.State.APIKey, s.Config.Daemon.Port); err != nil {
+		if err := haClient.RegisterAgent(ctx, s.Config, s.State); err != nil {
 			log.Warn().Err(err).Msg("Failed to register agent after pairing")
 		}
 
 		// 2. Push initial boot options if enabled
 		if s.Config.Daemon.ReportBootOptions {
 			options, _ := s.Grub.GetBootOptions(ctx)
-			if err := haClient.UpdateBootOptions(ctx, s.Config.Host.MAC, addr, options, s.Config.WakeOnLan.Address, s.Config.WakeOnLan.Port); err != nil {
+			if err := haClient.UpdateBootOptions(ctx, s.Config, s.State, options); err != nil {
 				log.Error().Err(err).Msg("Failed to push initial boot options after pairing")
 			}
 		}
@@ -216,17 +207,8 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		haClient := homeassistant.NewClient(s.State.HADaemonURL, s.State.WebhookID, nil)
 
-		// Get current IP
-		addr := ""
-		if iface, err := net.InterfaceByName(s.Config.Host.Interface); err == nil && s.IPProvider != nil {
-			ips, _ := s.IPProvider(*iface)
-			if len(ips) > 0 {
-				addr = ips[0]
-			}
-		}
-
 		options, _ := s.Grub.GetBootOptions(ctx)
-		_ = haClient.UpdateBootOptions(ctx, s.Config.Host.MAC, addr, options, s.Config.WakeOnLan.Address, s.Config.WakeOnLan.Port)
+		_ = haClient.UpdateBootOptions(ctx, s.Config, s.State, options)
 	}
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})

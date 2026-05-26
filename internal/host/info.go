@@ -138,3 +138,16 @@ func (h *Host) isWOLCapableInterface(inf net.Interface) bool {
 
 	return h.isPhysicalInterface(inf)
 }
+
+// GetIPForInterface returns the first IPv4 address for the given interface name.
+func (h *Host) GetIPForInterface(name string) string {
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return ""
+	}
+	ips, _ := h.GetIPInfo(*iface)
+	if len(ips) > 0 {
+		return ips[0]
+	}
+	return ""
+}

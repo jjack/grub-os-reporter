@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/jjack/grubstation/internal/config"
+	"github.com/jjack/grubstation/internal/host"
 )
 
 const (
@@ -20,6 +23,7 @@ type Client struct {
 	BaseURL    string
 	WebhookID  string
 	HTTPClient *http.Client
+	HostInfo   *host.Host
 }
 
 type Action string
@@ -57,6 +61,7 @@ func NewClient(baseURL, webhookID string, httpClient *http.Client) *Client {
 		BaseURL:    baseURL,
 		WebhookID:  webhookID,
 		HTTPClient: httpClient,
+		HostInfo:   host.New(),
 	}
 }
 
@@ -99,38 +104,38 @@ func (c *Client) PostWebhook(ctx context.Context, payload any) error {
 	return nil
 }
 
-func (c *Client) RegisterAgent(ctx context.Context, mac, addr, token string, port int) error {
+func (c *Client) RegisterAgent(ctx context.Context, cfg *config.Config, state *config.State) error {
 	payload := RegistrationPayload{
 		CommonPayload: CommonPayload{
 			Action:     ActionRegisterAction,
-			MACAddress: mac,
-			Address:    addr,
+			MACAddress: cfg.Host.MAC,
+			Address:    c.HostInfo.GetIPForInterface(cfg.Host.Interface),
 		},
-		AgentToken: token,
-		AgentPort:  port,
+		AgentToken: state.APIKey,
+		AgentPort:  cfg.Daemon.Port,
 	}
 	return c.PostWebhook(ctx, payload)
 }
 
-func (c *Client) UpdateBootOptions(ctx context.Context, mac, addr string, options []string, wolAddr string, wolPort int) error {
+func (c *Client) UpdateBootOptions(ctx context.Context, cfg *config.Config, state *config.State, options []string) error {
 	payload := UpdatePayload{
 		CommonPayload: CommonPayload{
 			Action:     ActionUpdateAction,
-			MACAddress: mac,
-			Address:    addr,
+			MACAddress: cfg.Host.MAC,
+			Address:    c.HostInfo.GetIPForInterface(cfg.Host.Interface),
 		},
 		BootOptions:         options,
-		WolBroadcastAddress: wolAddr,
-		WolBroadcastPort:    wolPort,
+		WolBroadcastAddress: cfg.WakeOnLan.Address,
+		WolBroadcastPort:    cfg.WakeOnLan.Port,
 	}
 	return c.PostWebhook(ctx, payload)
 }
 
-func (c *Client) UnregisterHost(ctx context.Context, mac, addr string) error {
+func (c *Client) UnregisterHost(ctx context.Context, cfg *config.Config, state *config.State) error {
 	payload := CommonPayload{
 		Action:     ActionUnregisterHost,
-		MACAddress: mac,
-		Address:    addr,
+		MACAddress: cfg.Host.MAC,
+		Address:    c.HostInfo.GetIPForInterface(cfg.Host.Interface),
 	}
 	return c.PostWebhook(ctx, payload)
 }
