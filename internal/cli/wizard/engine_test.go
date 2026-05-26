@@ -160,12 +160,9 @@ func TestValidateHAURL_Pure(t *testing.T) {
 }
 
 func TestAssembleConfig(t *testing.T) {
-	cfg, state := AssembleConfig("host", "mac", "wol", "ha", "webhook", 8081, true, 2, "path", "gruburl")
+	cfg := AssembleConfig("host", "mac", "wol", 8081, true, 2, "path")
 	if cfg.Host.Address != "host" || cfg.Daemon.Port != 8081 || !cfg.Daemon.ReportBootOptions {
 		t.Errorf("unexpected config: %+v", cfg)
-	}
-	if !state.Paired || state.HADaemonURL != "ha" || state.WebhookID != "webhook" {
-		t.Errorf("unexpected state: %+v", state)
 	}
 }
 

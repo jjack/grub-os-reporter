@@ -11,15 +11,12 @@ import (
 )
 
 func TestAssembleConfig_Complete(t *testing.T) {
-	cfg, state := AssembleConfig("1.2.3.4", "mac", "wol", "http://ha", "webhook", 8081, true, 5, "/boot/grub/grub.cfg", "http://grub")
+	cfg := AssembleConfig("1.2.3.4", "mac", "wol", 8081, true, 5, "/boot/grub/grub.cfg")
 	if cfg.Host.Address != "1.2.3.4" {
 		t.Errorf("expected address 1.2.3.4, got %s", cfg.Host.Address)
 	}
 	if cfg.Grub.URL != "http://grub" {
 		t.Errorf("expected grub url http://grub, got %s", cfg.Grub.URL)
-	}
-	if !state.Paired || state.WebhookID != "webhook" {
-		t.Errorf("unexpected state: %+v", state)
 	}
 }
 

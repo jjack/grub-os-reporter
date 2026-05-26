@@ -111,7 +111,7 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 				currentPort = existingCfg.Daemon.Port
 			}
 
-			cfg, pairState, err := doWizard(cmd.Context(), deps, cfgPath, currentPort, dryRun)
+			cfg, err := doWizard(cmd.Context(), deps, cfgPath, currentPort, dryRun)
 			if err != nil {
 				return err
 			}
@@ -120,10 +120,10 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 			}
 
 			if dryRun {
-				return doDryRun(cmd, deps, cfg, pairState, cfgPath, mgr)
+				return doDryRun(cmd, deps, cfg, cfgPath, mgr)
 			}
 
-			return doInstallation(cmd, deps, cfg, pairState, cfgPath)
+			return doInstallation(cmd, deps, cfg, cfgPath)
 		},
 	}
 
@@ -133,7 +133,7 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 	return cmd
 }
 
-func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPort int, dryRun bool) (*config.Config, *config.State, error) {
+func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPort int, dryRun bool) (*config.Config, error) {
 	// Clear the terminal screen before starting the interactive wizard
 	fmt.Print("\033[H\033[2J")
 	tap.Intro("GrubStation Setup")
@@ -156,19 +156,19 @@ func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPor
 		CurrentPort:    currentPort,
 	}
 
-	cfg, pairState, err := wizard.RunGenerateSurvey(ctx, state, dryRun, deps.Host.GetIPInfo, deps.Host.GetFQDN, deps.DiscoverHA)
+	cfg, err := wizard.RunGenerateSurvey(ctx, state, dryRun, deps.Host.GetIPInfo, deps.Host.GetFQDN, deps.DiscoverHA)
 	if err != nil {
 		if errors.Is(err, wizard.ErrAborted) {
 			tap.Message("Setup aborted.")
 			tap.Outro("Goodbye!")
-			return nil, nil, nil
+			return nil, nil
 		}
-		return nil, nil, err
+		return nil, err
 	}
-	return cfg, pairState, nil
+	return cfg, nil
 }
 
-func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, pairState *config.State, cfgPath string, mgr servicemanager.Manager) error {
+func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath string, mgr servicemanager.Manager) error {
 	wizard.PrintConfigSummary(cmd, cfg, cfgPath)
 
 	if svcPreview, err := mgr.Preview(cmd.Context(), cfgPath); err == nil {
@@ -183,15 +183,8 @@ func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, pairSta
 			waitTime = cfg.Grub.NetworkWaitTime
 		}
 
-		targetURL := pairState.HAGrubURL
-		if cfg.Grub.URL != "" {
-			targetURL = cfg.Grub.URL
-		}
-
 		grubPreview, err := deps.Grub.GenerateScript(grub.SetupOptions{
 			TargetMAC:       cfg.Host.MAC,
-			TargetURL:       targetURL,
-			AuthToken:       pairState.WebhookID,
 			WaitTimeSeconds: waitTime,
 		})
 		if err == nil {
@@ -206,15 +199,12 @@ func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, pairSta
 	return nil
 }
 
-func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, pairState *config.State, cfgPath string) error {
+func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath string) error {
 	if err := osMkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
 	if err := config.Save(cfg, cfgPath); err != nil {
-		return err
-	}
-	if err := pairState.Save(cfgPath); err != nil {
 		return err
 	}
 
