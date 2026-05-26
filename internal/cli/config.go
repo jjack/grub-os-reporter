@@ -71,7 +71,10 @@ func NewConfigValidateCmd() *cobra.Command {
 		Use:   "validate",
 		Short: "Validate an existing configuration file",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Configuration is already loaded and validated (structurally) by PersistentPreRunE
+			_, _, err := GetConfig(cmd)
+			if err != nil {
+				return err
+			}
 			cmd.Println("Configuration is valid.")
 			return nil
 		},

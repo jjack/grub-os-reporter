@@ -28,29 +28,23 @@ func NewSetupCmd() *cobra.Command {
 		Short: "Run the automated setup wizard to configure and install the agent",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if applyOnly {
-				// Use a temporary CLI instance to load config
-				tempCLI := &CLI{}
-				cfgFile, _ := cmd.Flags().GetString("config")
-				resolved, err := tempCLI.LoadConfig(cmd, cfgFile)
+				cfg, cfgFile, err := GetConfig(cmd)
 				if err != nil {
 					return err
 				}
 
-				state, _ := config.LoadState(resolved)
+				state, _ := config.LoadState(cfgFile)
 				if !state.Paired {
 					return fmt.Errorf("system is not paired. Run the full setup or pair via API first")
 				}
 
-				GlobalConfig = tempCLI.Config
-				GlobalConfigFile = resolved
-
 				log.Info().Msg("Applying GRUB configuration...")
 				g := grub.NewGrub()
 				if err := g.Setup(grub.SetupOptions{
-					TargetMAC:       GlobalConfig.Host.MAC,
+					TargetMAC:       cfg.Host.MAC,
 					TargetURL:       state.HAGrubURL,
 					AuthToken:       state.WebhookID,
-					WaitTimeSeconds: GlobalConfig.Grub.NetworkWaitTime,
+					WaitTimeSeconds: cfg.Grub.NetworkWaitTime,
 				}); err != nil {
 					return err
 				}
@@ -78,13 +72,8 @@ func NewSetupCmd() *cobra.Command {
 			}
 
 			if applyOnly {
-				cfgPath, _ := cmd.Flags().GetString("config")
+				_, cfgPath, _ := GetConfig(cmd)
 				return performInstall(cmd, cfgPath, "")
-			}
-
-			cfgPath, err := cmd.Flags().GetString("config")
-			if err != nil || cfgPath == "" {
-				cfgPath = config.DefaultConfigPath()
 			}
 
 			cfg, err := wizard.RunGenerateSurvey(dryRun, host.New().GetIPInfo)
@@ -101,6 +90,9 @@ func NewSetupCmd() *cobra.Command {
 			if err := populateTechnicalConfig(cfg); err != nil {
 				return err
 			}
+
+			// Determine final config path
+			_, cfgPath, _ := GetConfig(cmd)
 
 			if dryRun {
 				return doDryRun(cfg, cfgPath)
@@ -193,10 +185,6 @@ func doInstallation(cmd *cobra.Command, cfg *config.Config, cfgPath string) erro
 
 	tap.Intro("Proceeding with installation...")
 
-	// We update the global config with our freshly generated config so the installer can use it
-	GlobalConfig = cfg
-	GlobalConfigFile = cfgPath
-
 	if err := performInstall(cmd, cfgPath, ""); err != nil {
 		return err
 	}
@@ -207,6 +195,11 @@ func doInstallation(cmd *cobra.Command, cfg *config.Config, cfgPath string) erro
 
 func performInstall(cmd *cobra.Command, cfgFile string, token string) error {
 	log.Debug().Interface("config", cfgFile).Msg("Starting installation process")
+	cfg, _, err := GetConfig(cmd)
+	if err != nil {
+		return err
+	}
+
 	mgr, err := GetManager()
 	if err != nil {
 		return err
@@ -221,21 +214,21 @@ func performInstall(cmd *cobra.Command, cfgFile string, token string) error {
 		return fmt.Errorf("failed to resolve config path: %w", err)
 	}
 
-	if GlobalConfig.Daemon.ReportBootOptions {
+	if cfg.Daemon.ReportBootOptions {
 		waitTime := config.DefaultGrubWaitSeconds
-		if GlobalConfig.Grub.NetworkWaitTime != 0 {
-			waitTime = GlobalConfig.Grub.NetworkWaitTime
+		if cfg.Grub.NetworkWaitTime != 0 {
+			waitTime = cfg.Grub.NetworkWaitTime
 		}
 
 		// Load state for GRUB setup details
 		state, _ := config.LoadState(cfgFile)
 		targetURL := state.HAGrubURL
-		if GlobalConfig.Grub.URL != "" {
-			targetURL = GlobalConfig.Grub.URL
+		if cfg.Grub.URL != "" {
+			targetURL = cfg.Grub.URL
 		}
 
 		opts := grub.SetupOptions{
-			TargetMAC:       GlobalConfig.Host.MAC,
+			TargetMAC:       cfg.Host.MAC,
 			TargetURL:       targetURL,
 			AuthToken:       state.WebhookID,
 			WaitTimeSeconds: waitTime,
@@ -261,7 +254,7 @@ func performInstall(cmd *cobra.Command, cfgFile string, token string) error {
 				return err
 			}
 
-			if err := haClient.UpdateBootOptions(GlobalConfig, state, options); err != nil {
+			if err := haClient.UpdateBootOptions(cfg, state, options); err != nil {
 				return err
 			}
 			tap.Message("Successfully pushed initial state to Home Assistant.")
@@ -269,7 +262,7 @@ func performInstall(cmd *cobra.Command, cfgFile string, token string) error {
 	}
 
 	tap.Message(fmt.Sprintf("Installing into service manager: %s", mgr.Name()))
-	if err := mgr.Configure(GlobalConfig); err != nil {
+	if err := mgr.Configure(cfg); err != nil {
 		return fmt.Errorf("failed to configure service: %w", err)
 	}
 

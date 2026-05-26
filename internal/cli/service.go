@@ -66,6 +66,11 @@ func NewServiceRemoveCmd() *cobra.Command {
 		Use:   "remove",
 		Short: "Uninstall the grubstation service and GRUB hooks",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, cfgFile, err := GetConfig(cmd)
+			if err != nil {
+				return err
+			}
+
 			mgr, err := GetManager()
 			if err != nil {
 				return err
@@ -76,17 +81,17 @@ func NewServiceRemoveCmd() *cobra.Command {
 				return fmt.Errorf("failed to remove manager: %w", err)
 			}
 
-			if GlobalConfig.Daemon.ReportBootOptions {
+			if cfg.Daemon.ReportBootOptions {
 				cmd.Printf("Removing GRUB hooks...\n")
 				g := grub.NewGrub()
-				g.HassGrubStationPath = GlobalConfig.Grub.Path
+				g.HassGrubStationPath = cfg.Grub.Path
 				if err := g.Uninstall(); err != nil {
 					return fmt.Errorf("failed to uninstall grub: %w", err)
 				}
 			}
 
 			if purge {
-				cfgDir := filepath.Dir(GlobalConfigFile)
+				cfgDir := filepath.Dir(cfgFile)
 				cmd.Printf("Purging configuration: %s\n", cfgDir)
 				if err := os.RemoveAll(cfgDir); err != nil {
 					return fmt.Errorf("failed to purge configuration: %w", err)
@@ -136,6 +141,11 @@ func NewServiceStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Check the service status",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, _, err := GetConfig(cmd)
+			if err != nil {
+				return err
+			}
+
 			mgr, err := GetManager()
 			if err != nil {
 				return err
@@ -152,7 +162,7 @@ func NewServiceStatusCmd() *cobra.Command {
 
 			// Try to check local daemon status if running
 			client := &http.Client{Timeout: 1 * time.Second}
-			resp, err := client.Get(fmt.Sprintf("http://localhost:%d/status", GlobalConfig.Daemon.Port))
+			resp, err := client.Get(fmt.Sprintf("http://localhost:%d/status", cfg.Daemon.Port))
 			if err == nil {
 				defer func() { _ = resp.Body.Close() }()
 				body, _ := io.ReadAll(resp.Body)

@@ -17,18 +17,6 @@ const (
 	DefaultGrubWaitSeconds     = 2
 )
 
-const (
-	FlagGrubConfig          = "grub-config"
-	FlagMac                 = "host-mac"
-	FlagInterface           = "host-interface"
-	FlagWolBroadcastAddress = "broadcast-address"
-	FlagWolBroadcastPort    = "broadcast-port"
-	FlagHassURL             = "homeassistant-url"
-	FlagHassWebhook         = "homeassistant-webhook-id"
-	FlagAgentPort           = "daemon-port"
-	FlagDaemonKey           = "daemon-key"
-)
-
 type Config struct {
 	Host      HostConfig      `yaml:"host"`
 	WakeOnLan WakeOnLanConfig `yaml:"wake_on_lan"`
