@@ -59,8 +59,8 @@ func (cli *CLI) LoadConfig(cmd *cobra.Command, cfgFile string) (string, error) {
 	if cmd.Flags().Changed(config.FlagMac) {
 		cfg.Host.MAC, _ = cmd.Flags().GetString(config.FlagMac)
 	}
-	if cmd.Flags().Changed(config.FlagAddress) {
-		cfg.Host.Address, _ = cmd.Flags().GetString(config.FlagAddress)
+	if cmd.Flags().Changed(config.FlagInterface) {
+		cfg.Host.Interface, _ = cmd.Flags().GetString(config.FlagInterface)
 	}
 	if cmd.Flags().Changed(config.FlagWolBroadcastAddress) {
 		cfg.WakeOnLan.Address, _ = cmd.Flags().GetString(config.FlagWolBroadcastAddress)
@@ -120,7 +120,7 @@ func NewCLI() *CLI {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is /etc/grubstation/config.yaml)")
 	rootCmd.PersistentFlags().String(config.FlagGrubConfig, "", "GRUB config path override")
 	rootCmd.PersistentFlags().String(config.FlagMac, "", "MAC Address override")
-	rootCmd.PersistentFlags().String(config.FlagAddress, "", "Address override")
+	rootCmd.PersistentFlags().String(config.FlagInterface, "", "network interface to use")
 	rootCmd.PersistentFlags().String(config.FlagWolBroadcastAddress, "", "WOL target address override (defaults to 255.255.255.255)")
 	rootCmd.PersistentFlags().Int(config.FlagWolBroadcastPort, 9, "WOL target port override (defaults to 9)")
 	rootCmd.PersistentFlags().String(config.FlagDaemonKey, "", "API key for the daemon")

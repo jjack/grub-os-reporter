@@ -35,9 +35,6 @@ func generateConfigInteractive(ctx context.Context, state SystemState, isDryRun 
 		return nil, err
 	}
 
-	// Start background tasks
-	fqdnChan := startFQDNResolution(ctx, state.Hostname, getFQDN)
-
 	// 1. Boot Reporting (only if GRUB is present)
 	var reportsBoot bool
 	var err error
@@ -55,31 +52,25 @@ func generateConfigInteractive(ctx context.Context, state SystemState, isDryRun 
 		return nil, err
 	}
 
-	// 3. Host Address
-	hostAddress, err := stepSelectHostAddress(ctx, state.Hostname, selectedIface, fqdnChan, getIPInfo, getFQDN)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. Daemon Port
+	// 3. Daemon Port
 	agentPort, err := stepSelectDaemonPort(ctx, state, runsDaemon)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. WOL Address
+	// 4. WOL Address
 	wolBroadcastAddress, err := stepSelectWOLAddress(ctx, selectedIface, getIPInfo)
 	if err != nil {
 		return nil, err
 	}
 
-	// 6. GRUB Wait Time
+	// 5. GRUB Wait Time
 	grubWaitTime, finalGrubConfigPath, err := stepSelectGRUBWaitTime(ctx, state.GrubConfigPath, reportsBoot)
 	if err != nil {
 		return nil, err
 	}
 
-	cfg := AssembleConfig(hostAddress, selectedIface.HardwareAddr.String(), wolBroadcastAddress, agentPort, reportsBoot, grubWaitTime, finalGrubConfigPath)
+	cfg := AssembleConfig(selectedIface.Name, selectedIface.HardwareAddr.String(), wolBroadcastAddress, agentPort, reportsBoot, grubWaitTime, finalGrubConfigPath)
 	return cfg, nil
 }
 
@@ -111,21 +102,6 @@ func stepPromptReportBootOptions(ctx context.Context, grubPath string) (bool, er
 	return reportsBoot, nil
 }
 
-type fqdnResolutionResult struct {
-	fqdn string
-}
-
-func startFQDNResolution(ctx context.Context, hostname string, getFQDN func(string, *net.Interface) string) <-chan fqdnResolutionResult {
-	globalInfoChan := make(chan fqdnResolutionResult, 1)
-	go func() {
-		log.Debug().Interface("hostname", hostname).Msg("Starting background global FQDN resolution")
-		fqdn := getFQDN(hostname, nil)
-		log.Debug().Interface("fqdn", fqdn).Msg("Background global FQDN resolution complete")
-		globalInfoChan <- fqdnResolutionResult{fqdn}
-	}()
-	return globalInfoChan
-}
-
 func stepSelectNetworkInterface(ctx context.Context, interfaces []net.Interface, getIPInfo func(net.Interface) ([]string, map[string]string)) (net.Interface, error) {
 	ifaceIdx := tap.Select(ctx, tap.SelectOptions[int]{
 		Message: "Available Network Interface",
@@ -137,38 +113,6 @@ func stepSelectNetworkInterface(ctx context.Context, interfaces []net.Interface,
 	selectedIface := interfaces[ifaceIdx]
 	log.Debug().Interface("interface", selectedIface.Name).Interface("mac", selectedIface.HardwareAddr.String()).Msg("Selected network interface")
 	return selectedIface, nil
-}
-
-func stepSelectHostAddress(ctx context.Context, hostname string, iface net.Interface, fqdnChan <-chan fqdnResolutionResult, getIPInfo func(net.Interface) ([]string, map[string]string), getFQDN func(string, *net.Interface) string) (string, error) {
-	ips, _ := getIPInfo(iface)
-
-	// Local FQDN resolution (fast)
-	localFQDN := getFQDN(hostname, &iface)
-	log.Debug().Interface("fqdn", localFQDN).Msg("Local FQDN resolution result")
-
-	// Global FQDN resolution (wait if needed)
-	var globalFQDN string
-	select {
-	case res := <-fqdnChan:
-		globalFQDN = res.fqdn
-	default:
-		s := tap.NewSpinner(tap.SpinnerOptions{})
-		s.Start("Resolving network information...")
-		res := <-fqdnChan
-		s.Stop("Network information resolved", 0)
-		globalFQDN = res.fqdn
-	}
-	log.Debug().Interface("fqdn", globalFQDN).Msg("Global FQDN resolution result")
-
-	hostAddress := tap.Select(ctx, tap.SelectOptions[string]{
-		Message: "Host Address (Used for communication with the daemon)",
-		Options: BuildHostOptions(hostname, globalFQDN, localFQDN, ips),
-	})
-	if ctx.Err() != nil {
-		return "", ctx.Err()
-	}
-	log.Debug().Interface("address", hostAddress).Msg("Selected host address")
-	return hostAddress, nil
 }
 
 func stepSelectDaemonPort(ctx context.Context, state SystemState, runsDaemon bool) (int, error) {
@@ -236,11 +180,11 @@ func stepSelectGRUBWaitTime(ctx context.Context, grubConfigPath string, reportsB
 }
 
 // AssembleConfig is a pure function that populates the Config struct.
-func AssembleConfig(hostAddress string, mac string, wolAddress string, agentPort int, reportsBoot bool, grubWait int, grubPath string) *config.Config {
+func AssembleConfig(ifaceName string, mac string, wolAddress string, agentPort int, reportsBoot bool, grubWait int, grubPath string) *config.Config {
 	cfg := &config.Config{
 		Host: config.HostConfig{
-			Address: hostAddress,
-			MAC:     mac,
+			Interface: ifaceName,
+			MAC:       mac,
 		},
 		WakeOnLan: config.WakeOnLanConfig{
 			Address: wolAddress,

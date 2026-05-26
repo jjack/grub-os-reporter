@@ -1,11 +1,8 @@
 package wizard
 
 import (
-	"context"
 	"errors"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -21,50 +18,6 @@ func TestBuildIfaceOptions_Pure(t *testing.T) {
 	opts := BuildIfaceOptions(ifaces, ipProvider)
 	if len(opts) != 1 || opts[0].Label != "eth0" {
 		t.Errorf("unexpected options: %v", opts)
-	}
-}
-
-func TestBuildHostOptions(t *testing.T) {
-	opts := BuildHostOptions("my-host", "my-host.global", "my-host.local", []string{"192.168.1.50"})
-
-	if len(opts) != 4 {
-		t.Fatalf("expected 4 options, got %d", len(opts))
-	}
-	if opts[0].Value != "my-host.local" {
-		t.Errorf("expected option 0 value to be my-host.local")
-	}
-	if opts[1].Value != "my-host.global" {
-		t.Errorf("expected option 1 value to be my-host.global")
-	}
-	if opts[3].Value != "192.168.1.50" {
-		t.Errorf("expected option 3 value to be 192.168.1.50")
-	}
-}
-
-func TestBuildHostOptions_Deduplication(t *testing.T) {
-	opts := BuildHostOptions("my-host", "my-host", "my-host", []string{"192.168.1.50"})
-	if len(opts) != 2 {
-		t.Errorf("expected 2 options after deduplication, got %d", len(opts))
-	}
-}
-
-func TestBuildWolOptions(t *testing.T) {
-	ips := []string{"192.168.1.50", "10.0.0.50"}
-	broadcasts := map[string]string{
-		"192.168.1.50": "192.168.1.255",
-		"10.0.0.50":    "10.0.0.255",
-	}
-
-	opts := BuildWolOptions(ips, broadcasts)
-
-	if len(opts) != 3 {
-		t.Fatalf("expected 3 options, got %d", len(opts))
-	}
-	if opts[0].Value != "255.255.255.255" {
-		t.Errorf("expected DefaultWolBroadcastAddress, got %s", opts[0].Value)
-	}
-	if opts[1].Value != "192.168.1.255" {
-		t.Errorf("expected subnet broadcast 192.168.1.255, got %s", opts[1].Value)
 	}
 }
 
@@ -96,35 +49,9 @@ func TestValidatePort_Pure(t *testing.T) {
 	}
 }
 
-func TestValidateHAURL_Pure(t *testing.T) {
-	t.Run("valid and reachable", func(t *testing.T) {
-		err := ValidateHAURL(context.Background(), "http://localhost:8123", false, func(ctx context.Context, u string) error { return nil })
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("skip check", func(t *testing.T) {
-		err := ValidateHAURL(context.Background(), "http://localhost:8123", true, func(ctx context.Context, u string) error {
-			t.Error("urlChecker should not be called")
-			return nil
-		})
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("unreachable", func(t *testing.T) {
-		err := ValidateHAURL(context.Background(), "http://localhost:8123", false, func(ctx context.Context, u string) error { return errors.New("unreachable") })
-		if err == nil || err.Error() != "unreachable" {
-			t.Errorf("expected unreachable error, got %v", err)
-		}
-	})
-}
-
 func TestAssembleConfig(t *testing.T) {
-	cfg := AssembleConfig("host", "mac", "wol", 8081, true, 2, "path")
-	if cfg.Host.Address != "host" || cfg.Daemon.Port != 8081 || !cfg.Daemon.ReportBootOptions {
+	cfg := AssembleConfig("eth0", "mac", "wol", 8081, true, 2, "path")
+	if cfg.Host.Interface != "eth0" || cfg.Daemon.Port != 8081 || !cfg.Daemon.ReportBootOptions {
 		t.Errorf("unexpected config: %+v", cfg)
 	}
 }
@@ -156,54 +83,6 @@ func TestCheckPortAvailability(t *testing.T) {
 		err = CheckPortAvailability(port)
 		if err == nil {
 			t.Error("expected error for unavailable port, got nil")
-		}
-	})
-}
-
-func TestCheckHAConnection(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer ts.Close()
-
-		err := CheckHAConnection(context.Background(), ts.URL)
-		if err != nil {
-			t.Errorf("expected no error, got %v", err)
-		}
-	})
-
-	t.Run("failure", func(t *testing.T) {
-		err := CheckHAConnection(context.Background(), "http://localhost:1")
-		if err == nil {
-			t.Error("expected error for unreachable URL, got nil")
-		}
-	})
-
-	t.Run("invalid request", func(t *testing.T) {
-		err := CheckHAConnection(context.Background(), " http://invalid")
-		if err == nil {
-			t.Error("expected error for invalid URL, got nil")
-		}
-	})
-}
-
-func TestBuildWolOptions_Extra(t *testing.T) {
-	t.Run("no broadcast for ip", func(t *testing.T) {
-		ips := []string{"192.168.1.50"}
-		broadcasts := map[string]string{}
-		opts := BuildWolOptions(ips, broadcasts)
-		if len(opts) != 1 {
-			t.Errorf("expected 1 option (default), got %d", len(opts))
-		}
-	})
-}
-
-func TestValidateHAURL_Extra(t *testing.T) {
-	t.Run("invalid url format", func(t *testing.T) {
-		err := ValidateHAURL(context.Background(), "not-a-url", false, nil)
-		if err == nil {
-			t.Error("expected error for invalid URL format, got nil")
 		}
 	})
 }

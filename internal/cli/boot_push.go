@@ -4,6 +4,7 @@ package cli
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/jjack/grubstation/internal/config"
 	"github.com/jjack/grubstation/internal/homeassistant"
@@ -26,8 +27,17 @@ func NewBootPushCmd(deps *CommandDeps) *cobra.Command {
 				return err
 			}
 
+			// Get current IP for this interface to register with HA
+			addr := ""
+			if iface, err := net.InterfaceByName(deps.Config.Host.Interface); err == nil {
+				ips, _ := deps.Host.GetIPInfo(*iface)
+				if len(ips) > 0 {
+					addr = ips[0]
+				}
+			}
+
 			client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
-			if err := client.UpdateBootOptions(cmd.Context(), deps.Config.Host.MAC, deps.Config.Host.Address, options, deps.Config.WakeOnLan.Address, deps.Config.WakeOnLan.Port); err != nil {
+			if err := client.UpdateBootOptions(cmd.Context(), deps.Config.Host.MAC, addr, options, deps.Config.WakeOnLan.Address, deps.Config.WakeOnLan.Port); err != nil {
 				return err
 			}
 

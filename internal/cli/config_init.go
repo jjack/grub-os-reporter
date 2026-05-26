@@ -21,8 +21,8 @@ func NewConfigInitCmd(deps *CommandDeps) *cobra.Command {
 
 			cfg := &config.Config{
 				Host: config.HostConfig{
-					Address: "127.0.0.1",
-					MAC:     "00:00:00:00:00:00",
+					Interface: "eth0",
+					MAC:       "00:00:00:00:00:00",
 				},
 				WakeOnLan: config.WakeOnLanConfig{
 					Address: config.DefaultWolBroadcastAddress,

@@ -12,8 +12,8 @@ func TestConfig_SaveAndLoad(t *testing.T) {
 
 	cfg := &Config{
 		Host: HostConfig{
-			Address: "1.2.3.4",
-			MAC:     "aa:bb:cc:dd:ee:ff",
+			Interface: "eth0",
+			MAC:       "aa:bb:cc:dd:ee:ff",
 		},
 		Daemon: DaemonConfig{
 			Port:              9000,

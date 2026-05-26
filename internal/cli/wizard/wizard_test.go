@@ -11,9 +11,9 @@ import (
 )
 
 func TestAssembleConfig_Complete(t *testing.T) {
-	cfg := AssembleConfig("1.2.3.4", "mac", "wol", 8081, true, 5, "/boot/grub/grub.cfg")
-	if cfg.Host.Address != "1.2.3.4" {
-		t.Errorf("expected address 1.2.3.4, got %s", cfg.Host.Address)
+	cfg := AssembleConfig("eth0", "mac", "wol", 8081, true, 5, "/boot/grub/grub.cfg")
+	if cfg.Host.Interface != "eth0" {
+		t.Errorf("expected interface eth0, got %s", cfg.Host.Interface)
 	}
 }
 
@@ -34,8 +34,8 @@ func TestPrintConfigSummary(t *testing.T) {
 
 	cfg := &config.Config{
 		Host: config.HostConfig{
-			Address: "192.168.1.50",
-			MAC:     "00:11:22:33:44:55",
+			Interface: "eth0",
+			MAC:       "00:11:22:33:44:55",
 		},
 		WakeOnLan: config.WakeOnLanConfig{
 			Address: "192.168.1.255",

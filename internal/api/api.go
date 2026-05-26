@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"runtime"
 	"time"
@@ -23,16 +24,19 @@ type Server struct {
 	Grub       *grub.Grub
 	Router     *chi.Mux
 
+	IPProvider func(net.Interface) ([]string, map[string]string)
+
 	ShutdownHandler func() error
 }
 
-func NewServer(cfg *config.Config, state *config.State, configFile string, g *grub.Grub) *Server {
+func NewServer(cfg *config.Config, state *config.State, configFile string, g *grub.Grub, ipProvider func(net.Interface) ([]string, map[string]string)) *Server {
 	s := &Server{
 		Config:     cfg,
 		State:      state,
 		ConfigFile: configFile,
 		Grub:       g,
 		Router:     chi.NewRouter(),
+		IPProvider: ipProvider,
 	}
 
 	s.Router.Use(ZerologMiddleware)
@@ -124,15 +128,24 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 
 		haClient := homeassistant.NewClient(s.State.HADaemonURL, s.State.WebhookID, nil)
 
+		// Get current IP for this interface to register with HA
+		addr := ""
+		if iface, err := net.InterfaceByName(s.Config.Host.Interface); err == nil && s.IPProvider != nil {
+			ips, _ := s.IPProvider(*iface)
+			if len(ips) > 0 {
+				addr = ips[0]
+			}
+		}
+
 		// 1. Register agent
-		if err := haClient.RegisterAgent(ctx, s.Config.Host.MAC, s.Config.Host.Address, s.State.APIKey, s.Config.Daemon.Port); err != nil {
+		if err := haClient.RegisterAgent(ctx, s.Config.Host.MAC, addr, s.State.APIKey, s.Config.Daemon.Port); err != nil {
 			log.Warn().Err(err).Msg("Failed to register agent after pairing")
 		}
 
 		// 2. Push initial boot options if enabled
 		if s.Config.Daemon.ReportBootOptions {
 			options, _ := s.Grub.GetBootOptions(ctx)
-			if err := haClient.UpdateBootOptions(ctx, s.Config.Host.MAC, s.Config.Host.Address, options, s.Config.WakeOnLan.Address, s.Config.WakeOnLan.Port); err != nil {
+			if err := haClient.UpdateBootOptions(ctx, s.Config.Host.MAC, addr, options, s.Config.WakeOnLan.Address, s.Config.WakeOnLan.Port); err != nil {
 				log.Error().Err(err).Msg("Failed to push initial boot options after pairing")
 			}
 		}
@@ -181,8 +194,18 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		haClient := homeassistant.NewClient(s.State.HADaemonURL, s.State.WebhookID, nil)
+
+		// Get current IP
+		addr := ""
+		if iface, err := net.InterfaceByName(s.Config.Host.Interface); err == nil && s.IPProvider != nil {
+			ips, _ := s.IPProvider(*iface)
+			if len(ips) > 0 {
+				addr = ips[0]
+			}
+		}
+
 		options, _ := s.Grub.GetBootOptions(ctx)
-		_ = haClient.UpdateBootOptions(ctx, s.Config.Host.MAC, s.Config.Host.Address, options, s.Config.WakeOnLan.Address, s.Config.WakeOnLan.Port)
+		_ = haClient.UpdateBootOptions(ctx, s.Config.Host.MAC, addr, options, s.Config.WakeOnLan.Address, s.Config.WakeOnLan.Port)
 	}
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})

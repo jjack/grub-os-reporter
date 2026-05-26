@@ -20,7 +20,7 @@ const (
 const (
 	FlagGrubConfig          = "grub-config"
 	FlagMac                 = "host-mac"
-	FlagAddress             = "host-address"
+	FlagInterface           = "host-interface"
 	FlagWolBroadcastAddress = "broadcast-address"
 	FlagWolBroadcastPort    = "broadcast-port"
 	FlagHassURL             = "homeassistant-url"
@@ -54,8 +54,8 @@ type WakeOnLanConfig struct {
 }
 
 type HostConfig struct {
-	Address string `yaml:"address"`
-	MAC     string `yaml:"mac"`
+	Interface string `yaml:"interface"`
+	MAC       string `yaml:"mac"`
 }
 
 func (c *Config) Minimal() *Config {
