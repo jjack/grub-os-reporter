@@ -1,7 +1,6 @@
 package homeassistant
 
 import (
-	"context"
 	"net"
 	"testing"
 	"time"
@@ -73,10 +72,7 @@ func TestDiscover_Timeout(t *testing.T) {
 	discoveryTimeout = 10 * time.Millisecond
 	defer func() { discoveryTimeout = oldTimeout }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-
 	// This might still return results if there's a real HA on the network,
 	// but it shouldn't fail.
-	_, _ = Discover(ctx)
+	_, _ = Discover()
 }

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -19,8 +18,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/yarlson/tap"
 )
-
-var osMkdirAll = os.MkdirAll
 
 var ErrElevated = errors.New("elevated")
 
@@ -50,7 +47,7 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 				deps.ConfigFile = resolved
 
 				log.Info().Msg("Applying GRUB configuration...")
-				if err := deps.Grub.Setup(cmd.Context(), grub.SetupOptions{
+				if err := deps.Grub.Setup(grub.SetupOptions{
 					TargetMAC:       deps.Config.Host.MAC,
 					TargetURL:       state.HAGrubURL,
 					AuthToken:       state.WebhookID,
@@ -90,13 +87,13 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 				return performInstall(cmd, deps, cfgPath, "")
 			}
 
-			mgr, err := ensureSupport(cmd.Context(), deps)
+			mgr, err := ensureSupport(deps)
 			if err != nil {
 				return err
 			}
 
 			if !dryRun {
-				if err := mgr.CheckPermissions(cmd.Context()); err != nil {
+				if err := mgr.CheckPermissions(); err != nil {
 					return err
 				}
 			}
@@ -111,7 +108,7 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 				currentPort = existingCfg.Daemon.Port
 			}
 
-			cfg, err := doWizard(cmd.Context(), deps, cfgPath, currentPort, dryRun)
+			cfg, err := doWizard(deps, cfgPath, currentPort, dryRun)
 			if err != nil {
 				return err
 			}
@@ -120,7 +117,7 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 			}
 
 			if dryRun {
-				return doDryRun(cmd, deps, cfg, cfgPath, mgr)
+				return doDryRun(deps, cfg, cfgPath, mgr)
 			}
 
 			return doInstallation(cmd, deps, cfg, cfgPath)
@@ -133,7 +130,7 @@ func NewSetupCmd(deps *CommandDeps) *cobra.Command {
 	return cmd
 }
 
-func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPort int, dryRun bool) (*config.Config, error) {
+func doWizard(deps *CommandDeps, cfgPath string, currentPort int, dryRun bool) (*config.Config, error) {
 	// Clear the terminal screen before starting the interactive wizard
 	fmt.Print("\033[H\033[2J")
 	tap.Intro("GrubStation Setup")
@@ -145,7 +142,7 @@ func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPor
 
 	// Perform initial discovery
 	interfaces, _ := deps.Host.GetWOLInterfaces()
-	grubConfigPath, _ := deps.Grub.DiscoverConfigPath(ctx)
+	grubConfigPath, _ := deps.Grub.DiscoverConfigPath()
 
 	state := wizard.SystemState{
 		Interfaces:     interfaces,
@@ -154,7 +151,7 @@ func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPor
 		CurrentPort:    currentPort,
 	}
 
-	cfg, err := wizard.RunGenerateSurvey(ctx, state, dryRun, deps.Host.GetIPInfo, deps.Host.GetFQDN, deps.DiscoverHA)
+	cfg, err := wizard.RunGenerateSurvey(state, dryRun, deps.Host.GetIPInfo, deps.Host.GetFQDN, deps.DiscoverHA)
 	if err != nil {
 		if errors.Is(err, wizard.ErrAborted) {
 			tap.Message("Setup aborted.")
@@ -166,10 +163,10 @@ func doWizard(ctx context.Context, deps *CommandDeps, cfgPath string, currentPor
 	return cfg, nil
 }
 
-func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath string, mgr servicemanager.Manager) error {
-	wizard.PrintConfigSummary(cmd, cfg, cfgPath)
+func doDryRun(deps *CommandDeps, cfg *config.Config, cfgPath string, mgr servicemanager.Manager) error {
+	wizard.PrintConfigSummary(nil, cfg, cfgPath)
 
-	if svcPreview, err := mgr.Preview(cmd.Context(), cfgPath); err == nil {
+	if svcPreview, err := mgr.Preview(cfgPath); err == nil {
 		tap.Box(svcPreview, fmt.Sprintf(" %s Service Preview ", mgr.Name()), tap.BoxOptions{
 			ContentPadding: 2,
 		})
@@ -198,7 +195,7 @@ func doDryRun(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath
 }
 
 func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, cfgPath string) error {
-	if err := osMkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
@@ -235,12 +232,12 @@ func doInstallation(cmd *cobra.Command, deps *CommandDeps, cfg *config.Config, c
 
 func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token string) error {
 	log.Debug().Interface("config", cfgFile).Msg("Starting installation process")
-	mgr, err := deps.Manager(cmd.Context())
+	mgr, err := deps.Manager()
 	if err != nil {
 		return err
 	}
 
-	if err := mgr.CheckPermissions(cmd.Context()); err != nil {
+	if err := mgr.CheckPermissions(); err != nil {
 		return err
 	}
 
@@ -274,7 +271,7 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 			Hint: warning,
 		})
 
-		if err := deps.Grub.Setup(cmd.Context(), opts); err != nil {
+		if err := deps.Grub.Setup(opts); err != nil {
 			return fmt.Errorf("failed to install grub: %w", err)
 		}
 
@@ -283,17 +280,17 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 			haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 
 			if token != "" {
-				if err := haClient.RegisterAgent(cmd.Context(), deps.Config, state); err != nil {
+				if err := haClient.RegisterAgent(deps.Config, state); err != nil {
 					return err
 				}
 			}
 
-			options, err := deps.Grub.GetBootOptions(cmd.Context())
+			options, err := deps.Grub.GetBootOptions()
 			if err != nil {
 				return err
 			}
 
-			if err := haClient.UpdateBootOptions(cmd.Context(), deps.Config, state, options); err != nil {
+			if err := haClient.UpdateBootOptions(deps.Config, state, options); err != nil {
 				return err
 			}
 			tap.Message("Successfully pushed initial state to Home Assistant.")
@@ -301,16 +298,16 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 	}
 
 	tap.Message(fmt.Sprintf("Installing into service manager: %s", mgr.Name()))
-	if err := mgr.Configure(cmd.Context(), deps.Config); err != nil {
+	if err := mgr.Configure(deps.Config); err != nil {
 		return fmt.Errorf("failed to configure service: %w", err)
 	}
 
-	if err := mgr.Install(cmd.Context(), absConfig); err != nil {
+	if err := mgr.Install(absConfig); err != nil {
 		return fmt.Errorf("failed to install manager: %w", err)
 	}
 
 	tap.Message("Starting service...")
-	if err := mgr.Start(cmd.Context()); err != nil {
+	if err := mgr.Start(); err != nil {
 		return fmt.Errorf("failed to start service: %v", err)
 	}
 
@@ -318,11 +315,8 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 	return nil
 }
 
-func ensureSupport(ctx context.Context, deps *CommandDeps) (servicemanager.Manager, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	mgr, err := deps.Registry.Detect(ctx)
+func ensureSupport(deps *CommandDeps) (servicemanager.Manager, error) {
+	mgr, err := deps.Registry.Detect()
 	if err != nil {
 		if errors.Is(err, servicemanager.ErrNotSupported) {
 			supported := strings.Join(deps.Registry.SupportedServices(), ", ")
@@ -333,10 +327,10 @@ func ensureSupport(ctx context.Context, deps *CommandDeps) (servicemanager.Manag
 	return mgr, nil
 }
 
-func IsInstalled(ctx context.Context, deps *CommandDeps) (bool, error) {
-	mgr, err := ensureSupport(ctx, deps)
+func IsInstalled(deps *CommandDeps) (bool, error) {
+	mgr, err := ensureSupport(deps)
 	if err != nil {
 		return false, err
 	}
-	return mgr.IsInstalled(ctx)
+	return mgr.IsInstalled()
 }

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -27,11 +26,11 @@ type CommandDeps struct {
 	Registry   *servicemanager.Registry
 	Host       *host.Host
 	SaveConfig func(*config.Config, string) error
-	DiscoverHA func(context.Context) ([]homeassistant.ServiceInstance, error)
+	DiscoverHA func() ([]homeassistant.ServiceInstance, error)
 }
 
-func (cd *CommandDeps) Manager(ctx context.Context) (servicemanager.Manager, error) {
-	mgr, err := cd.Registry.Detect(ctx)
+func (cd *CommandDeps) Manager() (servicemanager.Manager, error) {
+	mgr, err := cd.Registry.Detect()
 	if err != nil {
 		return nil, fmt.Errorf("manager detection failed: %w", err)
 	}

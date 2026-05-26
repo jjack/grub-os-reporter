@@ -1,12 +1,10 @@
 package wizard
 
 import (
-	"context"
 	"strings"
 	"testing"
 
 	"github.com/jjack/grubstation/internal/config"
-	"github.com/spf13/cobra"
 	"github.com/yarlson/tap"
 )
 
@@ -19,15 +17,13 @@ func TestAssembleConfig_Complete(t *testing.T) {
 
 func TestStepConfirmOverwrite_DryRun(t *testing.T) {
 	// Dry run should not ask for confirmation
-	err := stepConfirmOverwrite(context.Background(), true, true)
+	err := stepConfirmOverwrite(true, true)
 	if err != nil {
 		t.Errorf("expected no error in dry run, got %v", err)
 	}
 }
 
 func TestPrintConfigSummary(t *testing.T) {
-	cmd := &cobra.Command{}
-
 	tapOut := tap.NewMockWritable()
 	tap.SetTermIO(nil, tapOut)
 	defer tap.SetTermIO(nil, nil)
@@ -50,7 +46,7 @@ func TestPrintConfigSummary(t *testing.T) {
 		},
 	}
 
-	PrintConfigSummary(cmd, cfg, "/etc/grubstation/config.yaml")
+	PrintConfigSummary(nil, cfg, "/etc/grubstation/config.yaml")
 
 	out := strings.Join(tapOut.Buffer, "")
 	if !strings.Contains(out, "/etc/grubstation/config.yaml") {

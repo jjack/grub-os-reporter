@@ -1,7 +1,6 @@
 package grub
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +19,7 @@ func TestGrub(t *testing.T) {
 	knownConfigPaths = []string{testDataPath}
 
 	g := &Grub{ConfigPath: testDataPath}
-	bootOptions, err := g.GetBootOptions(context.Background())
+	bootOptions, err := g.GetBootOptions()
 	if err != nil {
 		t.Fatalf("expected no error from grub GetBootOptions, got: %v", err)
 	}
@@ -49,7 +48,7 @@ func TestGrub(t *testing.T) {
 
 func TestGrub_FileNotFound(t *testing.T) {
 	g := &Grub{ConfigPath: "/tmp/nonexistent/grub.cfg"}
-	_, err := g.GetBootOptions(context.Background())
+	_, err := g.GetBootOptions()
 	if err == nil {
 		t.Fatal("expected error on nonexistent grub config, got nil")
 	}
@@ -63,7 +62,7 @@ func TestGrub_RealConfig(t *testing.T) {
 	}
 
 	g := &Grub{ConfigPath: testDataPath}
-	bootOptions, err := g.GetBootOptions(context.Background())
+	bootOptions, err := g.GetBootOptions()
 	if err != nil {
 		t.Fatalf("failed to parse real grub config: %v", err)
 	}
@@ -85,7 +84,7 @@ func TestGrub_GetBootOptions_PermissionDenied(t *testing.T) {
 	}
 
 	g := &Grub{ConfigPath: tempFile}
-	_, err := g.GetBootOptions(context.Background())
+	_, err := g.GetBootOptions()
 	if err == nil {
 		t.Skip("expected error reading write-only file (running as root?)")
 	}
@@ -112,7 +111,7 @@ func TestGetBootOptions_ScannerError(t *testing.T) {
 	}
 
 	g := &Grub{ConfigPath: tmpfile.Name()}
-	_, err = g.GetBootOptions(context.Background())
+	_, err = g.GetBootOptions()
 
 	if err == nil {
 		t.Skip("expected an error from unreadable file (running as root?)")

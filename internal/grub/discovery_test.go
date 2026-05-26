@@ -1,7 +1,6 @@
 package grub
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -22,7 +21,7 @@ func TestGrub_Discover(t *testing.T) {
 	knownConfigPaths = []string{fakeGrubPath}
 
 	g := &Grub{}
-	path, err := g.DiscoverConfigPath(context.Background())
+	path, err := g.DiscoverConfigPath()
 	if err != nil {
 		t.Errorf("expected no error from DiscoverConfigPath, got %v", err)
 	}
@@ -32,7 +31,7 @@ func TestGrub_Discover(t *testing.T) {
 
 	// Test error case
 	knownConfigPaths = []string{"/nonexistent/grub.cfg"}
-	_, err = g.DiscoverConfigPath(context.Background())
+	_, err = g.DiscoverConfigPath()
 	if !errors.Is(err, ErrConfigNotFound) {
 		t.Errorf("expected ErrConfigNotFound, got %v", err)
 	}
@@ -51,7 +50,7 @@ func TestGrub_AutoDiscovery(t *testing.T) {
 	knownConfigPaths = []string{fakeGrubPath}
 
 	g := &Grub{}
-	bootOptions, err := g.GetBootOptions(context.Background())
+	bootOptions, err := g.GetBootOptions()
 	if err != nil {
 		t.Fatalf("expected auto-discovery to find grub config without error, got: %v", err)
 	}
@@ -67,7 +66,7 @@ func TestGrub_AutoDiscovery_Fail(t *testing.T) {
 	knownConfigPaths = []string{"/tmp/definitely-do-not-exist"}
 
 	g := &Grub{}
-	_, err := g.GetBootOptions(context.Background())
+	_, err := g.GetBootOptions()
 	if err == nil {
 		t.Fatal("expected failure to find any grub config")
 	}

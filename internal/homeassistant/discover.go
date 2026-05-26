@@ -26,7 +26,7 @@ func isSupportedURL(url string) bool {
 	return url != "" && (strings.HasPrefix(strings.ToLower(url), "http://") || strings.HasPrefix(strings.ToLower(url), "https://"))
 }
 
-func Discover(ctx context.Context) ([]ServiceInstance, error) {
+func Discover() ([]ServiceInstance, error) {
 	log.Debug().Str("service", homeAssistantService).Str("domain", searchDomain).Msg("Starting Home Assistant discovery via zeroconf")
 
 	resolver, err := zeroconf.NewResolver(nil)
@@ -52,7 +52,7 @@ func Discover(ctx context.Context) ([]ServiceInstance, error) {
 		close(done)
 	}()
 
-	browseCtx, cancel := context.WithTimeout(ctx, discoveryTimeout)
+	browseCtx, cancel := context.WithTimeout(context.Background(), discoveryTimeout)
 	defer cancel()
 
 	err = resolver.Browse(browseCtx, homeAssistantService, searchDomain, entries)

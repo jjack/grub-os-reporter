@@ -1,7 +1,6 @@
 package grub
 
 import (
-	"context"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -27,7 +26,7 @@ func generateWaitList(seconds int) string {
 }
 
 // Setup creates a GRUB remote boot agent script in /etc/grub.d and updates the GRUB config.
-func (g *Grub) Setup(ctx context.Context, opts SetupOptions) error {
+func (g *Grub) Setup(opts SetupOptions) error {
 	content, err := g.GenerateScript(opts)
 	if err != nil {
 		return err
@@ -38,14 +37,14 @@ func (g *Grub) Setup(ctx context.Context, opts SetupOptions) error {
 	}
 
 	if path, err := g.LookPath("update-grub"); err == nil {
-		out, err := g.Command(ctx, path).CombinedOutput()
+		out, err := g.Command(path).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("update-grub failed: %s", string(out))
 		}
 		return nil
 	}
 	if path, err := g.LookPath("grub2-mkconfig"); err == nil {
-		out, err := g.Command(ctx, path, "-o", "/boot/grub2/grub.cfg").CombinedOutput()
+		out, err := g.Command(path, "-o", "/boot/grub2/grub.cfg").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("grub2-mkconfig failed: %s", string(out))
 		}
@@ -114,20 +113,20 @@ func (g *Grub) SetupWarning() string {
 }
 
 // Uninstall removes the GRUB remote boot agent script and updates the GRUB config.
-func (g *Grub) Uninstall(ctx context.Context) error {
+func (g *Grub) Uninstall() error {
 	if err := os.Remove(g.HassGrubStationPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to remove grub script: %w", err)
 	}
 
 	if path, err := g.LookPath("update-grub"); err == nil {
-		out, err := g.Command(ctx, path).CombinedOutput()
+		out, err := g.Command(path).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("update-grub failed: %s", string(out))
 		}
 		return nil
 	}
 	if path, err := g.LookPath("grub2-mkconfig"); err == nil {
-		out, err := g.Command(ctx, path, "-o", "/boot/grub2/grub.cfg").CombinedOutput()
+		out, err := g.Command(path, "-o", "/boot/grub2/grub.cfg").CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("grub2-mkconfig failed: %s", string(out))
 		}

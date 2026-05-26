@@ -80,20 +80,17 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 			// Initial handshake if paired
 			if state.Paired {
 				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-					defer cancel()
-
 					haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 					log.Info().Msg("Performing initial registration with Home Assistant")
 
-					if err := haClient.RegisterAgent(ctx, deps.Config, state); err != nil {
+					if err := haClient.RegisterAgent(deps.Config, state); err != nil {
 						log.Warn().Err(err).Msg("Initial registration failed")
 					}
 
 					if deps.Config.Daemon.ReportBootOptions {
 						log.Info().Msg("Pushing initial boot options to Home Assistant")
-						options, _ := deps.Grub.GetBootOptions(ctx)
-						if err := haClient.UpdateBootOptions(ctx, deps.Config, state, options); err != nil {
+						options, _ := deps.Grub.GetBootOptions()
+						if err := haClient.UpdateBootOptions(deps.Config, state, options); err != nil {
 							log.Error().Err(err).Msg("Initial update failed")
 						}
 					}
@@ -118,15 +115,16 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 
 			// Final push if paired and enabled
 			if deps.Config.Daemon.ReportBootOptions && state.Paired {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer cancel()
 				haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 
-				options, _ := deps.Grub.GetBootOptions(ctx)
-				_ = haClient.UpdateBootOptions(ctx, deps.Config, state, options)
+				options, _ := deps.Grub.GetBootOptions()
+				_ = haClient.UpdateBootOptions(deps.Config, state, options)
 			}
 
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			// We still need context for http server shutdown
+			shutdownCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer cancel()
+			shutdownCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			return httpSrv.Shutdown(shutdownCtx)
 		},

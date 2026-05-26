@@ -2,7 +2,6 @@ package grub
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -30,7 +29,7 @@ type Grub struct {
 	ConfigPath          string
 	HassGrubStationPath string
 	LookPath            func(file string) (string, error)
-	Command             func(ctx context.Context, name string, arg ...string) *exec.Cmd
+	Command             func(name string, arg ...string) *exec.Cmd
 	GetTemplate         func(name string) (*template.Template, error)
 }
 
@@ -38,7 +37,7 @@ func NewGrub() *Grub {
 	return &Grub{
 		HassGrubStationPath: "/etc/grub.d/99_grubstation",
 		LookPath:            exec.LookPath,
-		Command:             exec.CommandContext,
+		Command:             exec.Command,
 		GetTemplate:         assets.GetTemplate,
 	}
 }
@@ -51,7 +50,7 @@ type SetupOptions struct {
 }
 
 // GetBootOptions parses the GRUB configuration and returns available boot options.
-func (g *Grub) GetBootOptions(ctx context.Context) ([]string, error) {
+func (g *Grub) GetBootOptions() ([]string, error) {
 	log.Debug().Msg("Parsing GRUB boot options...")
 
 	var grubPath string
@@ -80,7 +79,7 @@ func (g *Grub) GetBootOptions(ctx context.Context) ([]string, error) {
 }
 
 // DiscoverConfigPath attempts to auto-detect the GRUB config file path.
-func (g *Grub) DiscoverConfigPath(ctx context.Context) (string, error) {
+func (g *Grub) DiscoverConfigPath() (string, error) {
 	return findConfig()
 }
 

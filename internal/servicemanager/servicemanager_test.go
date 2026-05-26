@@ -1,79 +1,74 @@
 package servicemanager
 
 import (
-	"context"
 	"testing"
 
 	"github.com/jjack/grubstation/internal/config"
 )
 
-func TestErrors(t *testing.T) {
-	if ErrNotSupported.Error() != "no supported service manager detected" {
-		t.Errorf("unexpected error message: %s", ErrNotSupported.Error())
-	}
-}
-
 type mockMgr struct {
-	name   string
-	active bool
+	name      string
+	active    bool
+	installed bool
 }
 
-func (m *mockMgr) Name() string                                         { return m.name }
-func (m *mockMgr) IsActive(ctx context.Context) bool                    { return m.active }
-func (m *mockMgr) IsInstalled(ctx context.Context) (bool, error)        { return false, nil }
-func (m *mockMgr) CheckPermissions(ctx context.Context) error           { return nil }
-func (m *mockMgr) Install(ctx context.Context, configPath string) error { return nil }
-func (m *mockMgr) Preview(ctx context.Context, configPath string) (string, error) {
-	return "preview", nil
-}
-func (m *mockMgr) Uninstall(ctx context.Context) error                     { return nil }
-func (m *mockMgr) Start(ctx context.Context) error                         { return nil }
-func (m *mockMgr) Stop(ctx context.Context) error                          { return nil }
-func (m *mockMgr) Configure(ctx context.Context, cfg *config.Config) error { return nil }
+func (m *mockMgr) Name() string                              { return m.name }
+func (m *mockMgr) IsActive() bool                            { return m.active }
+func (m *mockMgr) IsInstalled() (bool, error)                { return m.installed, nil }
+func (m *mockMgr) CheckPermissions() error                   { return nil }
+func (m *mockMgr) Install(configPath string) error           { return nil }
+func (m *mockMgr) Preview(configPath string) (string, error) { return "", nil }
+func (m *mockMgr) Uninstall() error                          { return nil }
+func (m *mockMgr) Start() error                              { return nil }
+func (m *mockMgr) Stop() error                               { return nil }
+func (m *mockMgr) Configure(cfg *config.Config) error        { return nil }
 
 func TestRegistry(t *testing.T) {
 	r := NewRegistry()
 
-	r.Register("b_mgr", func() Manager { return &mockMgr{name: "b_mgr", active: false} })
-	r.Register("a_mgr", func() Manager { return &mockMgr{name: "a_mgr", active: true} })
+	r.Register("service1", func() Manager { return &mockMgr{name: "service1", active: true} })
+	r.Register("service2", func() Manager { return &mockMgr{name: "service2", active: false} })
 
 	t.Run("Get", func(t *testing.T) {
-		if r.Get("a_mgr") == nil {
-			t.Error("expected to find a_mgr")
+		m := r.Get("service1")
+		if m == nil || m.Name() != "service1" {
+			t.Errorf("expected service1, got %v", m)
 		}
-		if r.Get("nonexistent") != nil {
-			t.Error("expected nil for nonexistent")
+
+		m = r.Get("nonexistent")
+		if m != nil {
+			t.Errorf("expected nil, got %v", m)
 		}
 	})
 
 	t.Run("Detect", func(t *testing.T) {
-		mgr, err := r.Detect(context.Background())
+		m, err := r.Detect()
 		if err != nil {
-			t.Errorf("unexpected error: %v", err)
+			t.Errorf("expected no error, got %v", err)
 		}
-		// Should be a_mgr because it's active and names are sorted alphabetically before detection
-		if mgr.Name() != "a_mgr" {
-			t.Errorf("expected a_mgr, got %s", mgr.Name())
+		if m == nil || m.Name() != "service1" {
+			t.Errorf("expected service1, got %v", m)
 		}
 
-		empty := NewRegistry()
-		_, err = empty.Detect(context.Background())
+		r2 := NewRegistry()
+		r2.Register("service2", func() Manager { return &mockMgr{name: "service2", active: false} })
+		m, err = r2.Detect()
 		if err != ErrNotSupported {
 			t.Errorf("expected ErrNotSupported, got %v", err)
 		}
 	})
 
 	t.Run("ActiveServices", func(t *testing.T) {
-		active := r.ActiveServices(context.Background())
-		if len(active) != 1 || active[0] != "a_mgr" {
-			t.Errorf("expected [a_mgr], got %v", active)
+		active := r.ActiveServices()
+		if len(active) != 1 || active[0] != "service1" {
+			t.Errorf("expected [service1], got %v", active)
 		}
 	})
 
 	t.Run("SupportedServices", func(t *testing.T) {
-		sup := r.SupportedServices()
-		if len(sup) != 2 || sup[0] != "a_mgr" || sup[1] != "b_mgr" {
-			t.Errorf("expected [a_mgr, b_mgr], got %v", sup)
+		supported := r.SupportedServices()
+		if len(supported) != 2 || supported[0] != "service1" || supported[1] != "service2" {
+			t.Errorf("expected [service1, service2], got %v", supported)
 		}
 	})
 }

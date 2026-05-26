@@ -2,7 +2,6 @@ package homeassistant
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,7 +64,7 @@ func NewClient(baseURL, webhookID string, httpClient *http.Client) *Client {
 	}
 }
 
-func (c *Client) PostWebhook(ctx context.Context, payload any) error {
+func (c *Client) PostWebhook(payload any) error {
 	u, err := url.Parse(c.BaseURL)
 	if err != nil {
 		return fmt.Errorf("invalid base url: %w", err)
@@ -77,7 +76,7 @@ func (c *Client) PostWebhook(ctx context.Context, payload any) error {
 		return fmt.Errorf("failed to marshal push payload: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewBuffer(bodyBytes))
+	req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create http request: %w", err)
 	}
@@ -104,7 +103,7 @@ func (c *Client) PostWebhook(ctx context.Context, payload any) error {
 	return nil
 }
 
-func (c *Client) RegisterAgent(ctx context.Context, cfg *config.Config, state *config.State) error {
+func (c *Client) RegisterAgent(cfg *config.Config, state *config.State) error {
 	payload := RegistrationPayload{
 		CommonPayload: CommonPayload{
 			Action:     ActionRegisterAction,
@@ -114,10 +113,10 @@ func (c *Client) RegisterAgent(ctx context.Context, cfg *config.Config, state *c
 		AgentToken: state.APIKey,
 		AgentPort:  cfg.Daemon.Port,
 	}
-	return c.PostWebhook(ctx, payload)
+	return c.PostWebhook(payload)
 }
 
-func (c *Client) UpdateBootOptions(ctx context.Context, cfg *config.Config, state *config.State, options []string) error {
+func (c *Client) UpdateBootOptions(cfg *config.Config, state *config.State, options []string) error {
 	payload := UpdatePayload{
 		CommonPayload: CommonPayload{
 			Action:     ActionUpdateAction,
@@ -128,14 +127,14 @@ func (c *Client) UpdateBootOptions(ctx context.Context, cfg *config.Config, stat
 		WolBroadcastAddress: cfg.WakeOnLan.Address,
 		WolBroadcastPort:    cfg.WakeOnLan.Port,
 	}
-	return c.PostWebhook(ctx, payload)
+	return c.PostWebhook(payload)
 }
 
-func (c *Client) UnregisterHost(ctx context.Context, cfg *config.Config, state *config.State) error {
+func (c *Client) UnregisterHost(cfg *config.Config, state *config.State) error {
 	payload := CommonPayload{
 		Action:     ActionUnregisterHost,
 		MACAddress: cfg.Host.MAC,
 		Address:    c.HostInfo.GetIPForInterface(cfg.Host.Interface),
 	}
-	return c.PostWebhook(ctx, payload)
+	return c.PostWebhook(payload)
 }

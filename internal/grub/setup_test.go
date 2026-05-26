@@ -1,7 +1,6 @@
 package grub
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -12,17 +11,17 @@ import (
 )
 
 // fakeExecCommand wrappers route the exec call back to the test binary's TestHelperProcess
-func fakeExecCommandSuccess(ctx context.Context, command string, args ...string) *exec.Cmd {
+func fakeExecCommandSuccess(command string, args ...string) *exec.Cmd {
 	cs := []string{"-test.run=TestHelperProcess", "--", command}
 	cs = append(cs, args...)
-	cmd := exec.CommandContext(ctx, os.Args[0], cs...)
+	cmd := exec.Command(os.Args[0], cs...)
 	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 	return cmd
 }
 
-func fakeExecCommandFail(ctx context.Context, command string, args ...string) *exec.Cmd {
+func fakeExecCommandFail(command string, args ...string) *exec.Cmd {
 	cs := []string{"-test.run=TestHelperProcess", "--", "fail"}
-	cmd := exec.CommandContext(ctx, os.Args[0], cs...)
+	cmd := exec.Command(os.Args[0], cs...)
 	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 	return cmd
 }
@@ -61,7 +60,7 @@ func TestGrub_Setup_Success(t *testing.T) {
 		return "", errors.New("not found")
 	}
 
-	err := g.Setup(context.Background(), SetupOptions{
+	err := g.Setup(SetupOptions{
 		TargetMAC:       "aa:bb:cc:dd:ee:ff",
 		TargetURL:       "http://hass.local:8123",
 		AuthToken:       "test_webhook",
@@ -84,7 +83,7 @@ func TestGrub_Setup_Success(t *testing.T) {
 		return "", errors.New("not found")
 	}
 
-	err = g.Setup(context.Background(), SetupOptions{
+	err = g.Setup(SetupOptions{
 		TargetMAC:       "aa:bb:cc:dd:ee:ff",
 		TargetURL:       "http://hass.local:8123",
 		AuthToken:       "test_webhook",
@@ -96,18 +95,17 @@ func TestGrub_Setup_Success(t *testing.T) {
 }
 
 func TestGrub_Setup_Errors(t *testing.T) {
-	ctx := context.Background()
 	g := NewGrub()
 
 	// 1. Invalid URL
-	err := g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "://bad-url", AuthToken: "test_webhook", WaitTimeSeconds: 2})
+	err := g.Setup(SetupOptions{TargetMAC: "mac", TargetURL: "://bad-url", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if !errors.Is(err, ErrInvalidHAURL) {
 		t.Fatalf("expected ErrInvalidHAURL, got %v", err)
 	}
 
 	// 2. File creation failure
 	g.HassGrubStationPath = "/this/path/does/not/exist/99_script"
-	err = g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
+	err = g.Setup(SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if err == nil || !strings.Contains(err.Error(), "failed to create grub script") {
 		t.Fatalf("expected file creation error, got %v", err)
 	}
@@ -120,7 +118,7 @@ func TestGrub_Setup_Errors(t *testing.T) {
 	g.LookPath = func(file string) (string, error) {
 		return "", errors.New("not found")
 	}
-	err = g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
+	err = g.Setup(SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if !errors.Is(err, ErrNoGrubTool) {
 		t.Fatalf("expected ErrNoGrubTool, got %v", err)
 	}
@@ -133,7 +131,7 @@ func TestGrub_Setup_Errors(t *testing.T) {
 		return "", errors.New("not found")
 	}
 	g.Command = fakeExecCommandFail
-	err = g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
+	err = g.Setup(SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if err == nil || !strings.Contains(err.Error(), "update-grub failed") {
 		t.Fatalf("expected update-grub execution error, got %v", err)
 	}
@@ -145,21 +143,20 @@ func TestGrub_Setup_Errors(t *testing.T) {
 		}
 		return "", errors.New("not found")
 	}
-	err = g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
+	err = g.Setup(SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if err == nil || !strings.Contains(err.Error(), "grub2-mkconfig failed") {
 		t.Fatalf("expected grub2-mkconfig execution error, got %v", err)
 	}
 }
 
 func TestGrub_Setup_TemplateErrors(t *testing.T) {
-	ctx := context.Background()
 	g := NewGrub()
 
 	// 1. Template parse error
 	g.GetTemplate = func(name string) (*template.Template, error) {
 		return nil, errors.New("failed to parse grub template")
 	}
-	err := g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
+	err := g.Setup(SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if err == nil || !strings.Contains(err.Error(), "failed to parse grub template") {
 		t.Fatalf("expected template parse error, got %v", err)
 	}
@@ -168,7 +165,7 @@ func TestGrub_Setup_TemplateErrors(t *testing.T) {
 	g.GetTemplate = func(name string) (*template.Template, error) {
 		return template.New(name).Parse("{{ .Host.NonExistentField }}")
 	}
-	err = g.Setup(ctx, SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
+	err = g.Setup(SetupOptions{TargetMAC: "mac", TargetURL: "http://hass.local", AuthToken: "test_webhook", WaitTimeSeconds: 2})
 	if err == nil || !strings.Contains(err.Error(), "failed to execute grub template") {
 		t.Fatalf("expected template execute error, got %v", err)
 	}
@@ -209,11 +206,11 @@ func TestGrub_Uninstall(t *testing.T) {
 		}
 		return "", errors.New("not found")
 	}
-	g.Command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	g.Command = func(name string, args ...string) *exec.Cmd {
 		return exec.Command("true")
 	}
 
-	err := g.Uninstall(context.Background())
+	err := g.Uninstall()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,7 +229,7 @@ func TestGrub_Uninstall_NoFile(t *testing.T) {
 		return "", errors.New("not found")
 	}
 
-	err := g.Uninstall(context.Background())
+	err := g.Uninstall()
 	if err != nil {
 		t.Fatalf("expected no error when file is already gone, got %v", err)
 	}
@@ -246,7 +243,7 @@ func TestGrub_Uninstall_RemoveError(t *testing.T) {
 	g.HassGrubStationPath = tempDir
 	_ = os.WriteFile(filepath.Join(tempDir, "keep"), []byte(""), 0o644)
 
-	err := g.Uninstall(context.Background())
+	err := g.Uninstall()
 	if err == nil {
 		t.Fatal("expected error when removing a non-empty directory, got nil")
 	}
@@ -264,11 +261,11 @@ func TestGrub_Uninstall_Grub2Mkconfig(t *testing.T) {
 		}
 		return "", errors.New("not found")
 	}
-	g.Command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	g.Command = func(name string, args ...string) *exec.Cmd {
 		return exec.Command("true")
 	}
 
-	err := g.Uninstall(context.Background())
+	err := g.Uninstall()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -286,11 +283,11 @@ func TestGrub_Uninstall_UpdateGrubError(t *testing.T) {
 		}
 		return "", errors.New("not found")
 	}
-	g.Command = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	g.Command = func(name string, args ...string) *exec.Cmd {
 		return exec.Command("false")
 	}
 
-	err := g.Uninstall(context.Background())
+	err := g.Uninstall()
 	if err == nil || !strings.Contains(err.Error(), "update-grub failed") {
 		t.Errorf("expected update-grub failure, got %v", err)
 	}

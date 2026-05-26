@@ -21,13 +21,13 @@ func NewBootPushCmd(deps *CommandDeps) *cobra.Command {
 				return fmt.Errorf("homeassistant url and webhook_id must be configured")
 			}
 
-			options, err := deps.Grub.GetBootOptions(cmd.Context())
+			options, err := deps.Grub.GetBootOptions()
 			if err != nil {
 				return err
 			}
 
 			client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
-			if err := client.UpdateBootOptions(cmd.Context(), deps.Config, state, options); err != nil {
+			if err := client.UpdateBootOptions(deps.Config, state, options); err != nil {
 				return err
 			}
 

@@ -3,8 +3,6 @@
 package servicemanager
 
 import (
-	"context"
-
 	"github.com/jjack/grubstation/internal/config"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -29,11 +27,11 @@ func (w *WindowsService) Name() string {
 	return "windows-service"
 }
 
-func (w *WindowsService) IsActive(ctx context.Context) bool {
+func (w *WindowsService) IsActive() bool {
 	return true
 }
 
-func (w *WindowsService) IsInstalled(ctx context.Context) (bool, error) {
+func (w *WindowsService) IsInstalled() (bool, error) {
 	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
 		return false, err
@@ -49,27 +47,27 @@ func (w *WindowsService) IsInstalled(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func (w *WindowsService) CheckPermissions(ctx context.Context) error {
+func (w *WindowsService) CheckPermissions() error {
 	// In the Native WiX flow, the TUI doesn't need admin permissions
 	// because the MSI handled the privileged tasks.
 	return nil
 }
 
-func (w *WindowsService) Install(ctx context.Context, configPath string) error {
+func (w *WindowsService) Install(configPath string) error {
 	// Service installation is handled by the WiX installer (MSI)
 	return nil
 }
 
-func (w *WindowsService) Preview(ctx context.Context, configPath string) (string, error) {
+func (w *WindowsService) Preview(configPath string) (string, error) {
 	return "Service installation and configuration are handled automatically by the Windows installer (MSI).", nil
 }
 
-func (w *WindowsService) Uninstall(ctx context.Context) error {
+func (w *WindowsService) Uninstall() error {
 	// Service uninstallation is handled by the WiX installer (MSI)
 	return nil
 }
 
-func (w *WindowsService) Start(ctx context.Context) error {
+func (w *WindowsService) Start() error {
 	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
 		return nil
@@ -92,7 +90,7 @@ func (w *WindowsService) Start(ctx context.Context) error {
 	return nil
 }
 
-func (w *WindowsService) Stop(ctx context.Context) error {
+func (w *WindowsService) Stop() error {
 	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
 		return nil
@@ -117,7 +115,7 @@ func (w *WindowsService) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (w *WindowsService) Configure(ctx context.Context, cfg *config.Config) error {
+func (w *WindowsService) Configure(cfg *config.Config) error {
 	// Firewall configuration is handled by the WiX installer (MSI) using a program-based rule
 	return nil
 }

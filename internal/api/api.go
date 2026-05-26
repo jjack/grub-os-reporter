@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -130,20 +129,17 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 
 	// Trigger initial handshake/push in background
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
 		haClient := homeassistant.NewClient(s.State.HADaemonURL, s.State.WebhookID, nil)
 
 		// 1. Register agent
-		if err := haClient.RegisterAgent(ctx, s.Config, s.State); err != nil {
+		if err := haClient.RegisterAgent(s.Config, s.State); err != nil {
 			log.Warn().Err(err).Msg("Failed to register agent after pairing")
 		}
 
 		// 2. Push initial boot options if enabled
 		if s.Config.Daemon.ReportBootOptions {
-			options, _ := s.Grub.GetBootOptions(ctx)
-			if err := haClient.UpdateBootOptions(ctx, s.Config, s.State, options); err != nil {
+			options, _ := s.Grub.GetBootOptions()
+			if err := haClient.UpdateBootOptions(s.Config, s.State, options); err != nil {
 				log.Error().Err(err).Msg("Failed to push initial boot options after pairing")
 			}
 		}
@@ -151,7 +147,7 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		// 3. Apply GRUB config if requested
 		if req.ApplyConfig && runtime.GOOS == "linux" {
 			log.Info().Msg("Applying GRUB configuration as requested by pairing")
-			err := s.Grub.Setup(ctx, grub.SetupOptions{
+			err := s.Grub.Setup(grub.SetupOptions{
 				TargetMAC:       s.Config.Host.MAC,
 				TargetURL:       s.State.HAGrubURL,
 				AuthToken:       s.State.WebhookID,
@@ -203,12 +199,9 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 
 	// Final push to HA if enabled
 	if s.Config.Daemon.ReportBootOptions && s.State.Paired {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 		haClient := homeassistant.NewClient(s.State.HADaemonURL, s.State.WebhookID, nil)
-
-		options, _ := s.Grub.GetBootOptions(ctx)
-		_ = haClient.UpdateBootOptions(ctx, s.Config, s.State, options)
+		options, _ := s.Grub.GetBootOptions()
+		_ = haClient.UpdateBootOptions(s.Config, s.State, options)
 	}
 
 	s.jsonResponse(w, http.StatusOK, map[string]string{"status": "ok"})

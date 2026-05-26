@@ -1,7 +1,6 @@
 package homeassistant
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -46,7 +45,7 @@ func TestClient_Push(t *testing.T) {
 		},
 	}
 
-	err := client.PostWebhook(context.Background(), payload)
+	err := client.PostWebhook(payload)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -79,7 +78,7 @@ func TestClient_RegisterAgent(t *testing.T) {
 	}
 	state := &config.State{APIKey: "token"}
 
-	err := client.RegisterAgent(context.Background(), cfg, state)
+	err := client.RegisterAgent(cfg, state)
 	if err != nil {
 		t.Fatalf("RegisterAgent failed: %v", err)
 	}
@@ -111,7 +110,7 @@ func TestClient_UpdateBootOptions(t *testing.T) {
 	}
 	state := &config.State{}
 
-	err := client.UpdateBootOptions(context.Background(), cfg, state, []string{"Ubuntu", "Windows"})
+	err := client.UpdateBootOptions(cfg, state, []string{"Ubuntu", "Windows"})
 	if err != nil {
 		t.Fatalf("UpdateBootOptions failed: %v", err)
 	}
@@ -145,7 +144,7 @@ func TestClient_UnregisterHost_Method(t *testing.T) {
 	}
 	state := &config.State{}
 
-	err := client.UnregisterHost(context.Background(), cfg, state)
+	err := client.UnregisterHost(cfg, state)
 	if err != nil {
 		t.Fatalf("UnregisterHost failed: %v", err)
 	}
@@ -157,7 +156,7 @@ func TestClient_UnregisterHost_Method(t *testing.T) {
 
 func TestClient_Push_InvalidURL(t *testing.T) {
 	client := NewClient(":\x00invalid%url", "test", nil)
-	err := client.PostWebhook(context.Background(), RegistrationPayload{})
+	err := client.PostWebhook(RegistrationPayload{})
 	if err == nil {
 		t.Fatal("expected error on invalid URL, got nil")
 	}
@@ -170,7 +169,7 @@ func TestClient_Push_HostError(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient(ts.URL, "test-webhook", nil)
-	err := client.PostWebhook(context.Background(), RegistrationPayload{})
+	err := client.PostWebhook(RegistrationPayload{})
 	if err == nil {
 		t.Fatal("expected error on server 500, got nil")
 	}
@@ -183,22 +182,9 @@ func TestClient_Push_HostError(t *testing.T) {
 func TestClient_Push_HttpClientError(t *testing.T) {
 	// Create client with invalid base url matching protocol scheme error
 	client := NewClient("http://127.0.0.1:0", "test", nil)
-	err := client.PostWebhook(context.Background(), RegistrationPayload{})
+	err := client.PostWebhook(RegistrationPayload{})
 	if err == nil {
 		t.Fatal("expected error")
-	}
-}
-
-func TestClient_Push_CreateRequestError(t *testing.T) {
-	client := NewClient("http://homeassistant.local:8123", "test", nil)
-	// Passing a nil context causes http.NewRequestWithContext to reliably return an error
-	//nolint:staticcheck // SA1012: we intentionally pass nil for testing
-	err := client.PostWebhook(nil, RegistrationPayload{})
-	if err == nil {
-		t.Fatal("expected error on nil context, got nil")
-	}
-	if !strings.Contains(err.Error(), "failed to create http request") {
-		t.Errorf("unexpected error message: %v", err)
 	}
 }
 
@@ -210,7 +196,7 @@ func TestClient_Push_NotOKResponse(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient(ts.URL, "test-webhook", nil)
-	err := client.PostWebhook(context.Background(), RegistrationPayload{})
+	err := client.PostWebhook(RegistrationPayload{})
 	if err == nil || !strings.Contains(err.Error(), "unexpected response from home assistant") {
 		t.Fatalf("expected unexpected response error, got %v", err)
 	}
@@ -219,7 +205,7 @@ func TestClient_Push_NotOKResponse(t *testing.T) {
 func TestClient_Push_MarshalError(t *testing.T) {
 	client := NewClient("http://ha.local", "test", nil)
 	// Channels cannot be marshaled to JSON
-	err := client.PostWebhook(context.Background(), make(chan int))
+	err := client.PostWebhook(make(chan int))
 	if err == nil || !strings.Contains(err.Error(), "failed to marshal push payload") {
 		t.Fatalf("expected marshal error, got %v", err)
 	}

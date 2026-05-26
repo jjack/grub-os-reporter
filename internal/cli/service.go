@@ -35,17 +35,17 @@ func NewServiceInstallCmd(deps *CommandDeps) *cobra.Command {
 		Use:   "install",
 		Short: "Install the agent as a system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager(cmd.Context())
+			mgr, err := deps.Manager()
 			if err != nil {
 				return err
 			}
 
-			if err := mgr.CheckPermissions(cmd.Context()); err != nil {
+			if err := mgr.CheckPermissions(); err != nil {
 				return err
 			}
 
 			cmd.Printf("Installing service: %s\n", mgr.Name())
-			if err := mgr.Install(cmd.Context(), configPath); err != nil {
+			if err := mgr.Install(configPath); err != nil {
 				return err
 			}
 
@@ -66,7 +66,7 @@ func NewServiceRemoveCmd(deps *CommandDeps) *cobra.Command {
 		Use:   "remove",
 		Short: "Uninstall the grubstation service and GRUB hooks",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager(cmd.Context())
+			mgr, err := deps.Manager()
 			if err != nil {
 				return err
 			}
@@ -76,19 +76,19 @@ func NewServiceRemoveCmd(deps *CommandDeps) *cobra.Command {
 			if state.HADaemonURL != "" && state.WebhookID != "" {
 				cmd.Printf("Unregistering from Home Assistant...\n")
 				client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
-				if err := client.UnregisterHost(cmd.Context(), deps.Config, state); err != nil {
+				if err := client.UnregisterHost(deps.Config, state); err != nil {
 					cmd.Printf("Warning: failed to unregister from Home Assistant: %v\n", err)
 				}
 			}
 
 			cmd.Printf("Removing service: %s\n", mgr.Name())
-			if err := mgr.Uninstall(cmd.Context()); err != nil {
+			if err := mgr.Uninstall(); err != nil {
 				return fmt.Errorf("failed to remove manager: %w", err)
 			}
 
 			if deps.Config.Daemon.ReportBootOptions {
 				cmd.Printf("Removing GRUB hooks...\n")
-				if err := deps.Grub.Uninstall(cmd.Context()); err != nil {
+				if err := deps.Grub.Uninstall(); err != nil {
 					return fmt.Errorf("failed to uninstall grub: %w", err)
 				}
 			}
@@ -116,11 +116,11 @@ func NewServiceStartCmd(deps *CommandDeps) *cobra.Command {
 		Use:   "start",
 		Short: "Start the system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager(cmd.Context())
+			mgr, err := deps.Manager()
 			if err != nil {
 				return err
 			}
-			return mgr.Start(cmd.Context())
+			return mgr.Start()
 		},
 	}
 }
@@ -130,11 +130,11 @@ func NewServiceStopCmd(deps *CommandDeps) *cobra.Command {
 		Use:   "stop",
 		Short: "Stop the system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager(cmd.Context())
+			mgr, err := deps.Manager()
 			if err != nil {
 				return err
 			}
-			return mgr.Stop(cmd.Context())
+			return mgr.Stop()
 		},
 	}
 }
@@ -144,12 +144,12 @@ func NewServiceStatusCmd(deps *CommandDeps) *cobra.Command {
 		Use:   "status",
 		Short: "Check the service status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := deps.Manager(cmd.Context())
+			mgr, err := deps.Manager()
 			if err != nil {
 				return err
 			}
 
-			active := mgr.IsActive(cmd.Context())
+			active := mgr.IsActive()
 			status := "Inactive"
 			if active {
 				status = "Active"

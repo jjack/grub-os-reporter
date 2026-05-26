@@ -1,7 +1,6 @@
 package servicemanager
 
 import (
-	"context"
 	"sort"
 
 	"github.com/rs/zerolog/log"
@@ -30,7 +29,7 @@ func (r *Registry) Get(name string) Manager {
 	return nil
 }
 
-func (r *Registry) Detect(ctx context.Context) (Manager, error) {
+func (r *Registry) Detect() (Manager, error) {
 	var names []string
 	for name := range r.services {
 		names = append(names, name)
@@ -39,7 +38,7 @@ func (r *Registry) Detect(ctx context.Context) (Manager, error) {
 
 	for _, name := range names {
 		mgr := r.services[name]()
-		if mgr.IsActive(ctx) {
+		if mgr.IsActive() {
 			log.Debug().Str("name", name).Msg("Detected service manager")
 			return mgr, nil
 		}
@@ -47,10 +46,10 @@ func (r *Registry) Detect(ctx context.Context) (Manager, error) {
 	return nil, ErrNotSupported
 }
 
-func (r *Registry) ActiveServices(ctx context.Context) []string {
+func (r *Registry) ActiveServices() []string {
 	var names []string
 	for name, factory := range r.services {
-		if factory().IsActive(ctx) {
+		if factory().IsActive() {
 			names = append(names, name)
 		}
 	}
