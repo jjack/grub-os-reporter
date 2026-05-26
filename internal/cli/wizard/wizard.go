@@ -21,36 +21,54 @@ var (
 )
 
 func generateConfigInteractive(isDryRun bool, getIPInfo func(net.Interface) ([]string, map[string]string)) (*config.Config, error) {
-	configPath := config.DefaultConfigPath()
-	// Check if already configured
+	fmt.Print("\033[H\033[2J")
+
+	// 0. Preflight check to see  if already configured
+	cfgPath := config.DefaultConfigPath()
 	isReinstall := false
-	currentPort := 0
-	if cfg, err := config.LoadConfig(configPath); err == nil {
-		isReinstall = true
-		currentPort = cfg.Daemon.Port
+	currentPort := "0"
+	if !isDryRun {
+		if c, err := config.LoadConfig(cfgPath); err == nil {
+			err := huh.NewConfirm().
+				Title("GrubStation is already configured. Do you want to re-run setup and overwrite the existing configuration?").
+				Value(&isReinstall).
+				Run()
+			if err != nil {
+				return nil, err
+			}
+			if !isReinstall {
+				return nil, ErrAborted
+			}
+			currentPort = strconv.Itoa(c.Daemon.Port)
+
+			fmt.Print("\033[H\033[2J")
+		}
 	}
 
-	// 0. Preflight check
-	if err := stepConfirmOverwrite(isReinstall, isDryRun); err != nil {
-		return nil, err
-	}
+	cfg := &config.Config{}
 
 	// 1. Detect GRUB and prompt for boot reporting
 	g := grub.NewGrub()
 	grubConfigPath, _ := g.DiscoverConfigPath()
-	var reportsBoot bool
-	if grubConfigPath != "" {
-		var err error
-		reportsBoot, err = stepPromptReportBootOptions(grubConfigPath)
+	if grubConfigPath == "" {
+		cfg.Daemon.ReportBootOptions = false
+	} else {
+		cfg.Grub.Path = grubConfigPath
+		err := huh.NewConfirm().
+			Title(fmt.Sprintf("Report GRUB boot options? (Detected GRUB at %s)", grubConfigPath)).
+			Value(&cfg.Daemon.ReportBootOptions).
+			Run()
 		if err != nil {
 			return nil, err
 		}
+		log.Debug().Bool("reportsBoot", cfg.Daemon.ReportBootOptions).Msg("User selected boot reporting preference")
+		fmt.Print("\033[H\033[2J")
 	}
 
 	// 2. Prepare Network Interface and WOL options
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list network interfaces: %w", err)
+		return nil, err
 	}
 
 	var filtered []net.Interface
@@ -80,11 +98,6 @@ func generateConfigInteractive(isDryRun bool, getIPInfo func(net.Interface) ([]s
 
 	// 3. Main Configuration Group
 	var selectedIfaceIdx int
-	portStr := strconv.Itoa(config.DefaultAgentPort)
-	if currentPort > 0 {
-		portStr = strconv.Itoa(currentPort)
-	}
-	wolAddr := config.DefaultWolBroadcastAddress
 	waitStr := strconv.Itoa(config.DefaultGrubWaitSeconds)
 
 	fields := []huh.Field{
@@ -94,40 +107,28 @@ func generateConfigInteractive(isDryRun bool, getIPInfo func(net.Interface) ([]s
 			Value(&selectedIfaceIdx),
 		huh.NewInput().
 			Title("Daemon Port").
-			Value(&portStr).
+			Value(&currentPort).
 			Placeholder(strconv.Itoa(config.DefaultAgentPort)).
 			Validate(func(s string) error {
 				if s == "" {
 					return nil
 				}
-				p, err := strconv.Atoi(s)
-				if err != nil {
-					return fmt.Errorf("invalid port: %w", err)
-				}
-				if p < 1 || p > 65535 {
-					return fmt.Errorf("port must be between 1 and 65535")
-				}
-				return nil
+				return config.ValidatePort(s)
 			}),
 		huh.NewSelect[string]().
 			Title("WOL Broadcast Address").
 			Description("Choose subnet broadcast if you have cross-VLAN setups").
 			Options(wolOptions...).
-			Value(&wolAddr),
+			Value(&cfg.WakeOnLan.Address),
 	}
 
-	if reportsBoot {
+	if cfg.Daemon.ReportBootOptions {
 		fields = append(fields, huh.NewInput().
 			Title("GRUB Network Wait").
 			Description("seconds to wait for network during boot").
 			Value(&waitStr).
 			Placeholder(strconv.Itoa(config.DefaultGrubWaitSeconds)).
-			Validate(func(s string) error {
-				if s == "" {
-					return nil
-				}
-				return config.ValidateGrubWaitTime(s)
-			}))
+			Validate(config.ValidateGrubWaitTime))
 	}
 
 	err = huh.NewForm(huh.NewGroup(fields...)).Run()
@@ -135,62 +136,11 @@ func generateConfigInteractive(isDryRun bool, getIPInfo func(net.Interface) ([]s
 		return nil, err
 	}
 
-	selectedIface := filtered[selectedIfaceIdx]
-	port, _ := strconv.Atoi(portStr)
-	grubWaitTime, _ := strconv.Atoi(waitStr)
+	cfg.Host.Interface = filtered[selectedIfaceIdx].Name
+	cfg.Daemon.Port, _ = strconv.Atoi(currentPort)
+	cfg.Grub.NetworkWaitTime, _ = strconv.Atoi(waitStr)
 
-	cfg := AssembleConfig(selectedIface.Name, port, wolAddr, reportsBoot, grubWaitTime, grubConfigPath)
 	return cfg, nil
-}
-
-func stepConfirmOverwrite(isReinstall, isDryRun bool) error {
-	if isReinstall && !isDryRun {
-		var overwrite bool
-		err := huh.NewConfirm().
-			Title("GrubStation is already configured. Do you want to re-run setup and overwrite the existing configuration?").
-			Value(&overwrite).
-			Run()
-		if err != nil {
-			return err
-		}
-		if !overwrite {
-			return ErrAborted
-		}
-	}
-	return nil
-}
-
-func stepPromptReportBootOptions(grubPath string) (bool, error) {
-	var reportsBoot bool
-	err := huh.NewConfirm().
-		Title(fmt.Sprintf("Enable remote boot selection? (Detected GRUB at %s)", grubPath)).
-		Value(&reportsBoot).
-		Run()
-	if err != nil {
-		return false, err
-	}
-	log.Debug().Interface("reportsBoot", reportsBoot).Msg("User selected boot reporting preference")
-	return reportsBoot, nil
-}
-
-// AssembleConfig is a pure function that populates the Config struct with wizard choices.
-func AssembleConfig(ifaceName string, agentPort int, wolAddress string, reportsBoot bool, grubWait int, grubPath string) *config.Config {
-	return &config.Config{
-		Host: config.HostConfig{
-			Interface: ifaceName,
-		},
-		WakeOnLan: config.WakeOnLanConfig{
-			Address: wolAddress,
-		},
-		Daemon: config.DaemonConfig{
-			Port:              agentPort,
-			ReportBootOptions: reportsBoot,
-		},
-		Grub: config.GrubConfig{
-			NetworkWaitTime: grubWait,
-			Path:            grubPath,
-		},
-	}
 }
 
 func PrintConfigSummary(w io.Writer, cfg *config.Config, cfgPath string) {
