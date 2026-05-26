@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/jjack/grubstation/internal/config"
-	"github.com/jjack/grubstation/internal/grub"
 	"github.com/spf13/cobra"
 )
 
@@ -29,23 +27,25 @@ func NewServiceCmd() *cobra.Command {
 }
 
 func NewServiceInstallCmd() *cobra.Command {
-	var configPath string
-
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   "install",
 		Short: "Install the agent as a system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := GetManager()
+			env, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}
 
-			if err := mgr.CheckPermissions(); err != nil {
+			if env.Manager == nil {
+				return fmt.Errorf("no supported service manager detected")
+			}
+
+			if err := env.Manager.CheckPermissions(); err != nil {
 				return err
 			}
 
-			cmd.Printf("Installing service: %s\n", mgr.Name())
-			if err := mgr.Install(configPath); err != nil {
+			cmd.Printf("Installing service: %s\n", env.Manager.Name())
+			if err := env.Manager.Install(env.ConfigPath); err != nil {
 				return err
 			}
 
@@ -53,10 +53,6 @@ func NewServiceInstallCmd() *cobra.Command {
 			return nil
 		},
 	}
-
-	cmd.Flags().StringVar(&configPath, "config", config.DefaultConfigPath(), "Path to configuration file")
-
-	return cmd
 }
 
 func NewServiceRemoveCmd() *cobra.Command {
@@ -66,32 +62,29 @@ func NewServiceRemoveCmd() *cobra.Command {
 		Use:   "remove",
 		Short: "Uninstall the grubstation service and GRUB hooks",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cfgFile, err := GetConfig(cmd)
+			env, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}
 
-			mgr, err := GetManager()
-			if err != nil {
-				return err
+			if env.Manager == nil {
+				return fmt.Errorf("no supported service manager detected")
 			}
 
-			cmd.Printf("Removing service: %s\n", mgr.Name())
-			if err := mgr.Uninstall(); err != nil {
+			cmd.Printf("Removing service: %s\n", env.Manager.Name())
+			if err := env.Manager.Uninstall(); err != nil {
 				return fmt.Errorf("failed to remove manager: %w", err)
 			}
 
-			if cfg.Daemon.ReportBootOptions {
+			if env.Config.Daemon.ReportBootOptions {
 				cmd.Printf("Removing GRUB hooks...\n")
-				g := grub.NewGrub()
-				g.HassGrubStationPath = cfg.Grub.Path
-				if err := g.Uninstall(); err != nil {
+				if err := env.Grub.Uninstall(); err != nil {
 					return fmt.Errorf("failed to uninstall grub: %w", err)
 				}
 			}
 
 			if purge {
-				cfgDir := filepath.Dir(cfgFile)
+				cfgDir := filepath.Dir(env.ConfigPath)
 				cmd.Printf("Purging configuration: %s\n", cfgDir)
 				if err := os.RemoveAll(cfgDir); err != nil {
 					return fmt.Errorf("failed to purge configuration: %w", err)
@@ -113,11 +106,14 @@ func NewServiceStartCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start the system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := GetManager()
+			env, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}
-			return mgr.Start()
+			if env.Manager == nil {
+				return fmt.Errorf("no supported service manager detected")
+			}
+			return env.Manager.Start()
 		},
 	}
 }
@@ -127,11 +123,14 @@ func NewServiceStopCmd() *cobra.Command {
 		Use:   "stop",
 		Short: "Stop the system service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mgr, err := GetManager()
+			env, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}
-			return mgr.Stop()
+			if env.Manager == nil {
+				return fmt.Errorf("no supported service manager detected")
+			}
+			return env.Manager.Stop()
 		},
 	}
 }
@@ -141,28 +140,26 @@ func NewServiceStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Check the service status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, _, err := GetConfig(cmd)
+			env, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}
-
-			mgr, err := GetManager()
-			if err != nil {
-				return err
+			if env.Manager == nil {
+				return fmt.Errorf("no supported service manager detected")
 			}
 
-			active := mgr.IsActive()
+			active := env.Manager.IsActive()
 			status := "Inactive"
 			if active {
 				status = "Active"
 			}
 
-			cmd.Printf("Service name: %s\n", mgr.Name())
+			cmd.Printf("Service name: %s\n", env.Manager.Name())
 			cmd.Printf("Service status: %s\n", status)
 
 			// Try to check local daemon status if running
 			client := &http.Client{Timeout: 1 * time.Second}
-			resp, err := client.Get(fmt.Sprintf("http://localhost:%d/status", cfg.Daemon.Port))
+			resp, err := client.Get(fmt.Sprintf("http://localhost:%d/status", env.Config.Daemon.Port))
 			if err == nil {
 				defer func() { _ = resp.Body.Close() }()
 				body, _ := io.ReadAll(resp.Body)

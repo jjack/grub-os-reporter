@@ -3,8 +3,10 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/jjack/grubstation/internal/config"
+	"github.com/jjack/grubstation/internal/grub"
 	"github.com/jjack/grubstation/internal/servicemanager"
 	"github.com/jjack/grubstation/internal/version"
 	"github.com/rs/zerolog"
@@ -15,33 +17,59 @@ type CLI struct {
 	RootCmd *cobra.Command
 }
 
-func GetManager() (servicemanager.Manager, error) {
-	registry := servicemanager.NewRegistry()
-	servicemanager.RegisterDefaultServices(registry)
-	mgr, err := registry.Detect()
-	if err != nil {
-		return nil, fmt.Errorf("manager detection failed: %w", err)
-	}
-	return mgr, nil
+type Env struct {
+	Config     *config.Config
+	State      *config.State
+	ConfigPath string
+	StatePath  string
+	Grub       *grub.Grub
+	Manager    servicemanager.Manager
 }
 
-// GetConfig loads the configuration from the specified path or the default.
-func GetConfig(cmd *cobra.Command) (*config.Config, string, error) {
-	cfgFile, _ := cmd.Flags().GetString("config")
-	resolved := cfgFile
-	if resolved == "" {
-		resolved = config.DefaultConfigPath()
+// GetEnv loads the full application environment, including configuration, state, and services.
+func GetEnv(cmd *cobra.Command) (*Env, error) {
+	// 1. Resolve paths
+	cfgPath, _ := cmd.Flags().GetString("config")
+	if cfgPath == "" {
+		cfgPath = config.DefaultConfigPath()
 	}
 
-	cfg, err := config.LoadConfig(resolved)
+	statePath := config.DefaultStatePath()
+	// If config was overridden, we assume state is next to it unless we add a --state flag later
+	if cmd.Flags().Changed("config") {
+		statePath = filepath.Join(filepath.Dir(cfgPath), "state.json")
+	}
+
+	// 2. Load data
+	cfg, err := config.LoadConfig(cfgPath)
 	if err != nil {
-		if cfgFile != "" || !os.IsNotExist(err) {
-			return nil, "", fmt.Errorf("failed to read config file %s: %w", resolved, err)
+		if cmd.Flags().Changed("config") || !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to read config file %s: %w", cfgPath, err)
 		}
 		cfg = &config.Config{}
 	}
 
-	return cfg, resolved, nil
+	state, err := config.LoadState(statePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load state: %w", err)
+	}
+
+	// 3. Initialize services
+	g := grub.NewGrub()
+	g.ConfigPath = cfg.Grub.Path
+
+	registry := servicemanager.NewRegistry()
+	servicemanager.RegisterDefaultServices(registry)
+	mgr, _ := registry.Detect() // Detect can fail if no supported init system found
+
+	return &Env{
+		Config:     cfg,
+		State:      state,
+		ConfigPath: cfgPath,
+		StatePath:  statePath,
+		Grub:       g,
+		Manager:    mgr,
+	}, nil
 }
 
 func NewCLI() *CLI {

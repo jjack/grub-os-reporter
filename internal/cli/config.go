@@ -71,7 +71,7 @@ func NewConfigValidateCmd() *cobra.Command {
 		Use:   "validate",
 		Short: "Validate an existing configuration file",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, _, err := GetConfig(cmd)
+			_, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}

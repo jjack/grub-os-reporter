@@ -26,36 +26,27 @@ func NewServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Start the background agent service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cfgFile, err := GetConfig(cmd)
+			env, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}
 
-			// Load pairing state
-			state, err := config.LoadState(cfgFile)
-			if err != nil {
-				log.Debug().Err(err).Msg("Failed to load pairing state")
-				state = &config.State{}
-			}
-
-			if cfg.Daemon.ReportBootOptions {
+			if env.Config.Daemon.ReportBootOptions {
 				// Drift detection
 				waitTime := config.DefaultGrubWaitSeconds
-				if cfg.Grub.NetworkWaitTime != 0 {
-					waitTime = cfg.Grub.NetworkWaitTime
+				if env.Config.Grub.NetworkWaitTime != 0 {
+					waitTime = env.Config.Grub.NetworkWaitTime
 				}
 
-				targetURL := state.HAGrubURL
-				if cfg.Grub.URL != "" {
-					targetURL = cfg.Grub.URL
+				targetURL := env.State.HAGrubURL
+				if env.Config.Grub.URL != "" {
+					targetURL = env.Config.Grub.URL
 				}
 
-				g := grub.NewGrub()
-				g.ConfigPath = cfg.Grub.Path
-				drift, err := g.CheckDrift(grub.SetupOptions{
-					TargetMAC:       cfg.Host.MAC,
+				drift, err := env.Grub.CheckDrift(grub.SetupOptions{
+					TargetMAC:       env.Config.Host.MAC,
 					TargetURL:       targetURL,
-					AuthToken:       state.WebhookID,
+					AuthToken:       env.State.WebhookID,
 					WaitTimeSeconds: waitTime,
 				})
 				if err == nil && drift {
@@ -66,44 +57,36 @@ func NewServeCmd() *cobra.Command {
 			}
 
 			// Start mDNS
-			mdnsServer, err := mdns.Start(cfg.Daemon.Port, cfg.Host.MAC, cfg.Host.Interface, state.Paired)
+			mdnsServer, err := mdns.Start(env.Config.Daemon.Port, env.Config.Host.MAC, env.Config.Host.Interface, env.State.Paired)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to start mDNS responder")
 			} else {
 				defer func() { _ = mdnsServer.Shutdown() }()
 			}
 
-			g := grub.NewGrub()
-			g.ConfigPath = cfg.Grub.Path
-			server := api.NewServer(cfg, state, cfgFile, g, host.New().GetIPInfo, mdnsServer)
+			server := api.NewServer(env.Config, env.State, env.ConfigPath, env.Grub, host.New().GetIPInfo, mdnsServer)
 			server.ShutdownHandler = func() error {
 				// Perform OS-specific shutdown
-				if runtime.GOOS == "windows" {
-					return exec.Command("shutdown", "/s", "/t", "0").Run()
-				} else {
-					return exec.Command("poweroff").Run()
-				}
+				return shutdownSystem()
 			}
 
 			httpSrv := &http.Server{
-				Addr:         fmt.Sprintf(":%d", cfg.Daemon.Port),
+				Addr:         fmt.Sprintf(":%d", env.Config.Daemon.Port),
 				Handler:      server.Router,
 				ReadTimeout:  5 * time.Second,
 				WriteTimeout: 10 * time.Second,
 				IdleTimeout:  120 * time.Second,
 			}
 
-			// Initial push if paired
-			if state.Paired {
+			// Initial handshake if paired
+			if env.State.Paired {
 				go func() {
-					haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
+					haClient := homeassistant.NewClient(env.State.HADaemonURL, env.State.WebhookID, nil)
 
-					if cfg.Daemon.ReportBootOptions {
+					if env.Config.Daemon.ReportBootOptions {
 						log.Info().Msg("Pushing initial boot options to Home Assistant")
-						g := grub.NewGrub()
-						g.ConfigPath = cfg.Grub.Path
-						options, _ := g.GetBootOptions()
-						if err := haClient.UpdateBootOptions(cfg, state, options); err != nil {
+						options, _ := env.Grub.GetBootOptions()
+						if err := haClient.UpdateBootOptions(env.Config, env.State, options); err != nil {
 							log.Error().Err(err).Msg("Initial update failed")
 						}
 					}
@@ -115,7 +98,7 @@ func NewServeCmd() *cobra.Command {
 			signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 			go func() {
-				log.Info().Int("port", cfg.Daemon.Port).Msg("Starting HTTP server")
+				log.Info().Int("port", env.Config.Daemon.Port).Msg("Starting HTTP server")
 				if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					log.Error().Err(err).Msg("Server failed")
 					stop <- syscall.SIGTERM
@@ -127,13 +110,10 @@ func NewServeCmd() *cobra.Command {
 			log.Info().Msg("Shutting down...")
 
 			// Final push if paired and enabled
-			if cfg.Daemon.ReportBootOptions && state.Paired {
-				haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
-
-				g := grub.NewGrub()
-				g.ConfigPath = cfg.Grub.Path
-				options, _ := g.GetBootOptions()
-				_ = haClient.UpdateBootOptions(cfg, state, options)
+			if env.Config.Daemon.ReportBootOptions && env.State.Paired {
+				haClient := homeassistant.NewClient(env.State.HADaemonURL, env.State.WebhookID, nil)
+				options, _ := env.Grub.GetBootOptions()
+				_ = haClient.UpdateBootOptions(env.Config, env.State, options)
 			}
 
 			// We still need context for http server shutdown
@@ -141,5 +121,17 @@ func NewServeCmd() *cobra.Command {
 			defer cancel()
 			return httpSrv.Shutdown(shutdownCtx)
 		},
+	}
+}
+
+func shutdownSystem() error {
+	log.Info().Msg("Shutting down system...")
+	switch runtime.GOOS {
+	case "linux":
+		return exec.Command("poweroff").Run()
+	case "windows":
+		return exec.Command("shutdown", "/s", "/t", "0").Run()
+	default:
+		return fmt.Errorf("shutdown not supported on OS: %s", runtime.GOOS)
 	}
 }

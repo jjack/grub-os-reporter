@@ -5,8 +5,6 @@ package cli
 import (
 	"fmt"
 
-	"github.com/jjack/grubstation/internal/config"
-	"github.com/jjack/grubstation/internal/grub"
 	"github.com/jjack/grubstation/internal/homeassistant"
 	"github.com/spf13/cobra"
 )
@@ -28,14 +26,12 @@ func NewBootListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List available boot options from GRUB",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, _, err := GetConfig(cmd)
+			env, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}
 
-			g := grub.NewGrub()
-			g.ConfigPath = cfg.Grub.Path
-			options, err := g.GetBootOptions()
+			options, err := env.Grub.GetBootOptions()
 			if err != nil {
 				return err
 			}
@@ -59,26 +55,22 @@ func NewBootPushCmd() *cobra.Command {
 		Use:   "push",
 		Short: "Push the list of available OSes to Home Assistant",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cfgFile, err := GetConfig(cmd)
+			env, err := GetEnv(cmd)
 			if err != nil {
 				return err
 			}
 
-			// Load state for HA credentials
-			state, _ := config.LoadState(cfgFile)
-			if state.HADaemonURL == "" || state.WebhookID == "" {
+			if env.State.HADaemonURL == "" || env.State.WebhookID == "" {
 				return fmt.Errorf("homeassistant url and webhook_id must be configured")
 			}
 
-			g := grub.NewGrub()
-			g.ConfigPath = cfg.Grub.Path
-			options, err := g.GetBootOptions()
+			options, err := env.Grub.GetBootOptions()
 			if err != nil {
 				return err
 			}
 
-			client := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
-			if err := client.UpdateBootOptions(cfg, state, options); err != nil {
+			client := homeassistant.NewClient(env.State.HADaemonURL, env.State.WebhookID, nil)
+			if err := client.UpdateBootOptions(env.Config, env.State, options); err != nil {
 				return err
 			}
 
