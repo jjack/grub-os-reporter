@@ -279,12 +279,6 @@ func performInstall(cmd *cobra.Command, deps *CommandDeps, cfgFile string, token
 			tap.Message("Pushing initial boot options to Home Assistant...")
 			haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 
-			if token != "" {
-				if err := haClient.RegisterAgent(deps.Config, state); err != nil {
-					return err
-				}
-			}
-
 			options, err := deps.Grub.GetBootOptions()
 			if err != nil {
 				return err

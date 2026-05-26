@@ -2,7 +2,6 @@ package homeassistant
 
 import (
 	"encoding/json"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,85 +10,6 @@ import (
 
 	"github.com/jjack/grubstation/internal/config"
 )
-
-func TestClient_Push(t *testing.T) {
-	var receivedPayload RegistrationPayload
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.URL.Path, "api/webhook/test-webhook") {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST method, got %s", r.Method)
-		}
-
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("failed to read request body: %v", err)
-		}
-
-		if err := json.Unmarshal(body, &receivedPayload); err != nil {
-			t.Fatalf("failed to unmarshal body: %v", err)
-		}
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	}))
-	defer ts.Close()
-
-	client := NewClient(ts.URL, "test-webhook", nil)
-	payload := RegistrationPayload{
-		CommonPayload: CommonPayload{
-			Action:     ActionRegisterAction,
-			MACAddress: "aa:bb:cc:dd",
-			Address:    "10.0.0.1",
-		},
-	}
-
-	err := client.PostWebhook(payload)
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-
-	if receivedPayload.Action != ActionRegisterAction {
-		t.Errorf("expected action %s, got %s", ActionRegisterAction, receivedPayload.Action)
-	}
-	if receivedPayload.MACAddress != "aa:bb:cc:dd" {
-		t.Errorf("expected MAC aa:bb:cc:dd, got %s", receivedPayload.MACAddress)
-	}
-}
-
-func TestClient_RegisterAgent(t *testing.T) {
-	var receivedPayload RegistrationPayload
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&receivedPayload)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	}))
-	defer ts.Close()
-
-	client := NewClient(ts.URL, "test-webhook", nil)
-	// Mock host info to avoid real network lookup
-	client.HostInfo.NetInterfaces = func() ([]net.Interface, error) { return nil, nil }
-	client.HostInfo.GetAddrs = func(iface net.Interface) ([]net.Addr, error) { return nil, nil }
-
-	cfg := &config.Config{
-		Host:   config.HostConfig{MAC: "mac", Interface: "eth0"},
-		Daemon: config.DaemonConfig{Port: 8081},
-	}
-	state := &config.State{APIKey: "token"}
-
-	err := client.RegisterAgent(cfg, state)
-	if err != nil {
-		t.Fatalf("RegisterAgent failed: %v", err)
-	}
-
-	if receivedPayload.Action != ActionRegisterAction {
-		t.Errorf("expected action %s, got %s", ActionRegisterAction, receivedPayload.Action)
-	}
-	if receivedPayload.AgentToken != "token" {
-		t.Errorf("expected token token, got %s", receivedPayload.AgentToken)
-	}
-}
 
 func TestClient_UpdateBootOptions(t *testing.T) {
 	var receivedPayload UpdatePayload
@@ -126,37 +46,9 @@ func TestClient_UpdateBootOptions(t *testing.T) {
 	}
 }
 
-func TestClient_UnregisterHost_Method(t *testing.T) {
-	var receivedPayload CommonPayload
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&receivedPayload)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	}))
-	defer ts.Close()
-
-	client := NewClient(ts.URL, "test-webhook", nil)
-	client.HostInfo.NetInterfaces = func() ([]net.Interface, error) { return nil, nil }
-	client.HostInfo.GetAddrs = func(iface net.Interface) ([]net.Addr, error) { return nil, nil }
-
-	cfg := &config.Config{
-		Host: config.HostConfig{MAC: "mac", Interface: "eth0"},
-	}
-	state := &config.State{}
-
-	err := client.UnregisterHost(cfg, state)
-	if err != nil {
-		t.Fatalf("UnregisterHost failed: %v", err)
-	}
-
-	if receivedPayload.Action != ActionUnregisterHost {
-		t.Errorf("expected action %s, got %s", ActionUnregisterHost, receivedPayload.Action)
-	}
-}
-
 func TestClient_Push_InvalidURL(t *testing.T) {
 	client := NewClient(":\x00invalid%url", "test", nil)
-	err := client.PostWebhook(RegistrationPayload{})
+	err := client.PostWebhook(UpdatePayload{})
 	if err == nil {
 		t.Fatal("expected error on invalid URL, got nil")
 	}
@@ -169,7 +61,7 @@ func TestClient_Push_HostError(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient(ts.URL, "test-webhook", nil)
-	err := client.PostWebhook(RegistrationPayload{})
+	err := client.PostWebhook(UpdatePayload{})
 	if err == nil {
 		t.Fatal("expected error on server 500, got nil")
 	}
@@ -182,7 +74,7 @@ func TestClient_Push_HostError(t *testing.T) {
 func TestClient_Push_HttpClientError(t *testing.T) {
 	// Create client with invalid base url matching protocol scheme error
 	client := NewClient("http://127.0.0.1:0", "test", nil)
-	err := client.PostWebhook(RegistrationPayload{})
+	err := client.PostWebhook(UpdatePayload{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -196,7 +88,7 @@ func TestClient_Push_NotOKResponse(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient(ts.URL, "test-webhook", nil)
-	err := client.PostWebhook(RegistrationPayload{})
+	err := client.PostWebhook(UpdatePayload{})
 	if err == nil || !strings.Contains(err.Error(), "unexpected response from home assistant") {
 		t.Fatalf("expected unexpected response error, got %v", err)
 	}

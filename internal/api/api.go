@@ -131,11 +131,6 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		haClient := homeassistant.NewClient(s.State.HADaemonURL, s.State.WebhookID, nil)
 
-		// 1. Register agent
-		if err := haClient.RegisterAgent(s.Config, s.State); err != nil {
-			log.Warn().Err(err).Msg("Failed to register agent after pairing")
-		}
-
 		// 2. Push initial boot options if enabled
 		if s.Config.Daemon.ReportBootOptions {
 			options, _ := s.Grub.GetBootOptions()

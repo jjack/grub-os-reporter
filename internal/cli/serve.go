@@ -83,10 +83,6 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 					haClient := homeassistant.NewClient(state.HADaemonURL, state.WebhookID, nil)
 					log.Info().Msg("Performing initial registration with Home Assistant")
 
-					if err := haClient.RegisterAgent(deps.Config, state); err != nil {
-						log.Warn().Err(err).Msg("Initial registration failed")
-					}
-
 					if deps.Config.Daemon.ReportBootOptions {
 						log.Info().Msg("Pushing initial boot options to Home Assistant")
 						options, _ := deps.Grub.GetBootOptions()

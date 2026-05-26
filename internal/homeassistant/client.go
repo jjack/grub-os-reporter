@@ -28,25 +28,12 @@ type Client struct {
 type Action string
 
 const (
-	ActionRegisterAction Action = "register_agent_token"
-	ActionUpdateAction   Action = "update_boot_options"
-	ActionUnregisterHost Action = "unregister_host"
+	ActionUpdateAction Action = "update_boot_options"
 )
 
-type CommonPayload struct {
-	Action     Action `json:"action"`
-	MACAddress string `json:"mac"`
-	Address    string `json:"address"`
-}
-
-type RegistrationPayload struct {
-	CommonPayload
-	AgentToken string `json:"agent_token,omitempty"`
-	AgentPort  int    `json:"agent_port,omitempty"`
-}
-
 type UpdatePayload struct {
-	CommonPayload
+	Action              Action   `json:"action"`
+	MACAddress          string   `json:"mac"`
 	BootOptions         []string `json:"boot_options"`
 	WolBroadcastAddress string   `json:"broadcast_address,omitempty"`
 	WolBroadcastPort    int      `json:"broadcast_port,omitempty"`
@@ -103,38 +90,13 @@ func (c *Client) PostWebhook(payload any) error {
 	return nil
 }
 
-func (c *Client) RegisterAgent(cfg *config.Config, state *config.State) error {
-	payload := RegistrationPayload{
-		CommonPayload: CommonPayload{
-			Action:     ActionRegisterAction,
-			MACAddress: cfg.Host.MAC,
-			Address:    c.HostInfo.GetIPForInterface(cfg.Host.Interface),
-		},
-		AgentToken: state.APIKey,
-		AgentPort:  cfg.Daemon.Port,
-	}
-	return c.PostWebhook(payload)
-}
-
 func (c *Client) UpdateBootOptions(cfg *config.Config, state *config.State, options []string) error {
 	payload := UpdatePayload{
-		CommonPayload: CommonPayload{
-			Action:     ActionUpdateAction,
-			MACAddress: cfg.Host.MAC,
-			Address:    c.HostInfo.GetIPForInterface(cfg.Host.Interface),
-		},
+		Action:              ActionUpdateAction,
+		MACAddress:          cfg.Host.MAC,
 		BootOptions:         options,
 		WolBroadcastAddress: cfg.WakeOnLan.Address,
 		WolBroadcastPort:    cfg.WakeOnLan.Port,
-	}
-	return c.PostWebhook(payload)
-}
-
-func (c *Client) UnregisterHost(cfg *config.Config, state *config.State) error {
-	payload := CommonPayload{
-		Action:     ActionUnregisterHost,
-		MACAddress: cfg.Host.MAC,
-		Address:    c.HostInfo.GetIPForInterface(cfg.Host.Interface),
 	}
 	return c.PostWebhook(payload)
 }
