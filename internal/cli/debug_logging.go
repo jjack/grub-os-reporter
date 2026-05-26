@@ -2,92 +2,60 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"fmt"
-	"log/slog"
+	"io"
 	"os"
-	"reflect"
 	"sync"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
-// memHandler is a thread-safe slog handler that writes to a buffer.
-type memHandler struct {
-	mu     *sync.Mutex
+// debugWriter is an io.Writer that captures logs in a buffer and optionally writes to another writer.
+type debugWriter struct {
+	mu     sync.Mutex
 	buf    *bytes.Buffer
-	parent slog.Handler
+	parent io.Writer
 }
 
-func newMemHandler(buf *bytes.Buffer, parent slog.Handler) *memHandler {
-	return &memHandler{
-		mu:     &sync.Mutex{},
-		buf:    buf,
-		parent: parent,
-	}
-}
+func (w *debugWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-func (h *memHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	// We always want to capture DEBUG logs in the buffer,
-	// even if the parent handler filters them out.
-	return true
-}
+	// 1. Capture in memory buffer
+	_, _ = w.buf.Write(p)
 
-func (h *memHandler) Handle(ctx context.Context, r slog.Record) error {
-	h.mu.Lock()
-	// 1. Log to the in-memory buffer (always DEBUG level)
-	// We use a simple text format for the debug dump
-	fmt.Fprintf(h.buf, "[%s] %s: %s", r.Time.Format("15:04:05.000"), r.Level, r.Message)
-	r.Attrs(func(a slog.Attr) bool {
-		fmt.Fprintf(h.buf, " %s=%v", a.Key, a.Value)
-		return true
-	})
-	fmt.Fprintln(h.buf)
-	h.mu.Unlock()
-
-	// 2. Delegate to the parent (which might be the default stdout handler)
-	if h.parent.Enabled(ctx, r.Level) {
-		return h.parent.Handle(ctx, r)
-	}
-	return nil
-}
-
-func (h *memHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &memHandler{
-		mu:     h.mu,
-		buf:    h.buf,
-		parent: h.parent.WithAttrs(attrs),
-	}
-}
-
-func (h *memHandler) WithGroup(name string) slog.Handler {
-	return &memHandler{
-		mu:     h.mu,
-		buf:    h.buf,
-		parent: h.parent.WithGroup(name),
-	}
+	// 2. Write to parent (usually console)
+	return w.parent.Write(p)
 }
 
 // setupDebugLogging sets up an in-memory logger and returns a function to dump logs on error.
 func setupDebugLogging() (dumpFunc func(err error)) {
 	var buf bytes.Buffer
-	originalHandler := slog.Default().Handler()
+	originalLogger := log.Logger
 
-	// If the current handler is the default one from the slog package, wrapping it
-	// and then calling slog.SetDefault will cause infinite recursion and deadlock
-	// because SetDefault redirects the standard log package back to the new default,
-	// while the old default handler delegates its work to the standard log package.
-	if reflect.TypeOf(originalHandler).String() == "*slog.defaultHandler" {
-		originalHandler = slog.NewTextHandler(os.Stderr, nil)
+	// Zerolog doesn't provide a clean way to extract the current writer from a Logger instance
+	// without using internal/unstable APIs. Since we mostly control the global logger in this app,
+	// we'll assume os.Stderr as the fallback parent writer.
+	parent := io.Writer(os.Stderr)
+
+	dw := &debugWriter{
+		buf:    &buf,
+		parent: parent,
 	}
 
-	// We wrap the current handler. This ensures that:
-	// 1. The user still sees what they usually see on the console.
-	// 2. We capture EVERYTHING (all levels) in our buffer.
-	mem := newMemHandler(&buf, originalHandler)
-	slog.SetDefault(slog.New(mem))
+	// Create a new logger that writes to our debugWriter
+	// We want to capture DEBUG logs even if the parent was set to INFO.
+	// So we set the global level to Debug for the duration of the capture.
+	originalLevel := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+
+	log.Logger = zerolog.New(dw).With().Timestamp().Logger()
 
 	return func(err error) {
-		// Restore original handler
-		slog.SetDefault(slog.New(originalHandler))
+		// Restore original logger and level
+		log.Logger = originalLogger
+		zerolog.SetGlobalLevel(originalLevel)
 
 		if err == nil {
 			return
@@ -96,16 +64,16 @@ func setupDebugLogging() (dumpFunc func(err error)) {
 		// If there was an error, dump the buffer to a temp file
 		tmpFile, createErr := os.CreateTemp("", "grubstation-setup-*.log")
 		if createErr != nil {
-			fmt.Fprintf(os.Stderr, "\nFailed to create debug log file: %v\n", createErr)
+			_, _ = fmt.Fprintf(os.Stderr, "\nFailed to create debug log file: %v\n", createErr)
 			return
 		}
 		defer func() { _ = tmpFile.Close() }()
 
 		if _, writeErr := tmpFile.Write(buf.Bytes()); writeErr != nil {
-			fmt.Fprintf(os.Stderr, "\nFailed to write to debug log file: %v\n", writeErr)
+			_, _ = fmt.Fprintf(os.Stderr, "\nFailed to write to debug log file: %v\n", writeErr)
 			return
 		}
 
-		fmt.Fprintf(os.Stderr, "\nAn error occurred during setup. Detailed debug logs have been saved to:\n%s\n", tmpFile.Name())
+		_, _ = fmt.Fprintf(os.Stderr, "\nAn error occurred during setup. Detailed debug logs have been saved to:\n%s\n", tmpFile.Name())
 	}
 }
