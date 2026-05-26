@@ -32,7 +32,11 @@ func Platform() string {
 	return "windows"
 }
 
-func (h *Host) getAdapterDNSSuffix(ifIndex uint32) string {
+func (h *Host) platformInit() {
+	h.getAdapterDNSSuffix = getAdapterDNSSuffix
+}
+
+func getAdapterDNSSuffix(ifIndex uint32) string {
 	// GetAdaptersAddresses is used to retrieve DNS suffixes.
 	// We use GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_FRIENDLY_NAME
 	flags := uint32(windows.GAA_FLAG_SKIP_ANYCAST | windows.GAA_FLAG_SKIP_MULTICAST | windows.GAA_FLAG_SKIP_FRIENDLY_NAME)

@@ -60,7 +60,7 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to start mDNS responder")
 			} else {
-				defer mdnsServer.Shutdown()
+				defer func() { _ = mdnsServer.Shutdown() }()
 			}
 
 			server := api.NewServer(deps.Config, state, deps.ConfigFile, deps.Grub, deps.Host.GetIPInfo, mdnsServer)
@@ -118,9 +118,7 @@ func NewServeCmd(deps *CommandDeps) *cobra.Command {
 			}
 
 			// We still need context for http server shutdown
-			shutdownCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-			defer cancel()
-			shutdownCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			return httpSrv.Shutdown(shutdownCtx)
 		},

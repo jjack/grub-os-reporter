@@ -7,6 +7,8 @@ import (
 	"runtime"
 )
 
+func (h *Host) platformInit() {}
+
 func isPhysicalInterface(inf net.Interface) bool {
 	return true
 }

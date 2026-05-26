@@ -11,6 +11,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+func (h *Host) platformInit() {}
+
 func (h *Host) isPhysicalInterface(inf net.Interface) bool {
 	virtualInterfaces := []string{"veth", "docker", "br-", "virbr", "vmnet", "vboxnet"}
 	for _, prefix := range virtualInterfaces {

@@ -151,7 +151,7 @@ func NewServiceStatusCmd(deps *CommandDeps) *cobra.Command {
 			client := &http.Client{Timeout: 1 * time.Second}
 			resp, err := client.Get(fmt.Sprintf("http://localhost:%d/status", deps.Config.Daemon.Port))
 			if err == nil {
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 				body, _ := io.ReadAll(resp.Body)
 				cmd.Printf("Daemon status: %s\n", string(body))
 			} else {

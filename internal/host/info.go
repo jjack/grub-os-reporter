@@ -17,15 +17,16 @@ var (
 
 // Host handles system information discovery.
 type Host struct {
-	OsHostname     func() (string, error)
-	NetInterfaces  func() ([]net.Interface, error)
-	NetLookupCNAME func(name string) (string, error)
-	GetAddrs       func(iface net.Interface) ([]net.Addr, error)
-	OsStat         func(name string) (os.FileInfo, error)
+	OsHostname           func() (string, error)
+	NetInterfaces        func() ([]net.Interface, error)
+	NetLookupCNAME       func(name string) (string, error)
+	GetAddrs             func(iface net.Interface) ([]net.Addr, error)
+	OsStat               func(name string) (os.FileInfo, error)
+	getAdapterDNSSuffix func(ifIndex uint32) string
 }
 
 func New() *Host {
-	return &Host{
+	h := &Host{
 		OsHostname:     os.Hostname,
 		NetInterfaces:  net.Interfaces,
 		NetLookupCNAME: net.LookupCNAME,
@@ -33,7 +34,12 @@ func New() *Host {
 			return iface.Addrs()
 		},
 		OsStat: os.Stat,
+		getAdapterDNSSuffix: func(ifIndex uint32) string {
+			return ""
+		},
 	}
+	h.platformInit()
+	return h
 }
 
 // DetectHostname returns the system hostname.
