@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.9.0](https://github.com/jjack/grubstation/compare/v1.8.1...v1.9.0) (2026-06-24)
+
+
+### Features
+
+* added /pair and /unpair endpoints ([ac39df8](https://github.com/jjack/grubstation/commit/ac39df8be653e6df14fa0e0e7f3fd51977a51f02))
+* adding mdns discovery ([2b8a633](https://github.com/jjack/grubstation/commit/2b8a633b9fa9209eb7066e096456896c4faf8fa4))
+
+
+### Bug Fixes
+
+* getting rid of ToYAML anti-pattern ([77fa151](https://github.com/jjack/grubstation/commit/77fa15173547fae243f2b5e78e930ee14b11fe1d))
+* making forms a little better ([fc70574](https://github.com/jjack/grubstation/commit/fc705740463674f2fc00259df777076cbc8652d5))
+* removing pairing data from setup wizard because the pairing happens later now ([c7753b1](https://github.com/jjack/grubstation/commit/c7753b17e944c133deeacb87214657dec31ffb62))
+* removing so much unnecessary context ([b60c691](https://github.com/jjack/grubstation/commit/b60c6911238db005c9ac1625a59ce35b51fdc299))
+* removing unnecessary "other" ([82a9d42](https://github.com/jjack/grubstation/commit/82a9d4219a8289b842d4bc73954964da8f70d8c2))
+* simplifying config handling ([6571955](https://github.com/jjack/grubstation/commit/6571955149e13c04f81608fc9d6c17a5a4e871ed))
+* using zerolog instead of slog for debug loggin ([5cceb21](https://github.com/jjack/grubstation/commit/5cceb216bad661d1926fe224bc0a7224f32b67e0))
+
 ## [1.8.1](https://github.com/jjack/grubstation/compare/v1.8.0...v1.8.1) (2026-05-22)
 
 
