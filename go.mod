@@ -5,11 +5,11 @@ go 1.26.2
 require (
 	charm.land/huh/v2 v2.0.3
 	github.com/brutella/dnssd v1.2.14
-	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-chi/chi/v5 v5.3.1
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/cobra v1.10.2
 	github.com/yarlson/tap v0.13.1
-	golang.org/x/sys v0.44.0
+	golang.org/x/sys v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
