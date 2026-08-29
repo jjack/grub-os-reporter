@@ -38,7 +38,7 @@ jobs:
           wix eula accept wix7
           wix extension add WixToolset.Firewall.wixext WixToolset.UI.wixext WixToolset.Util.wixext -g
 
-      - uses: goreleaser/goreleaser-action@v7.2.1
+      - uses: goreleaser/goreleaser-action@v7.2.2
         with:
           version: 2.13.3
           args: release --clean
